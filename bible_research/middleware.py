@@ -20,8 +20,8 @@ class DeviceAndCountryMiddleware:
 
         path = request.path
         auto_authentication = not request.user.is_authenticated \
-            and not path.startswith('/admin') \
-            and not path.startswith('/api/v1/bible')
+            or not (path.startswith('/admin')
+                    or path.startswith('/api/v1/bible'))
 
         if auto_authentication:
             self.auto_authenticate(request)
