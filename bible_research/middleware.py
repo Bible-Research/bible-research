@@ -19,7 +19,11 @@ class DeviceAndCountryMiddleware:
         self.primary_language(request)
 
         path = request.path
-        if not request.user.is_authenticated and not path.startswith('/admin'):
+        auto_authentication = not request.user.is_authenticated \
+            or not (path.startswith('/admin')
+                    or path.startswith('/api/v1/bible'))
+
+        if auto_authentication:
             self.auto_authenticate(request)
 
         print(f"User: {request.user}")
