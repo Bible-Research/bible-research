@@ -1,3 +1,7 @@
+- Local db setup:
+    - `docker run --name tests-1 -p 5436:5432 -e POSTGRES_PASSWORD=password postgres`
+    - `createdb -h localhost -p 5436 -U postgres tests-1`
+    - `pg_restore -h localhost -p 5436 -U postgres -d tests-1 -v --no-owner --clean "db_backups/backup_20251103_085732.dump"`
 - Add DBT client:
     - `cd bible/services`
 ```

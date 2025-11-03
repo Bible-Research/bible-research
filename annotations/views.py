@@ -135,31 +135,23 @@ class NoteViewSet(viewsets.ModelViewSet):
           Users see all public notes with that tag and their own notes
         """
 
-        public_param = self.request.query_params.get('public', '')
-        public_filter = public_param.lower() == 'true'
-
         tag_id = self.request.query_params.get('tag_id', None)
-        note_id = self.kwargs.get('pk', None)
-        specific_request = note_id is not None or tag_id is not None
+        if tag_id:
+            # If specific tag is requested, search for it also in public notes
+            public = True
+        else:
+            # Otherwise evaluate if user requested public notes
+            public_param = self.request.query_params.get('public', '').lower()
+            public = public_param == 'true'
 
         if self.request.user.is_authenticated:
-            if public_filter or specific_request:
-                # Show all public notes and user's own notes
-                queryset = Note.objects.filter(
-                    models.Q(public=True) | models.Q(user=self.request.user)
-                )
-            else:
-                # Default: show only the user's private notes
-                queryset = Note.objects.filter(
-                    user=self.request.user,
-                )
-        else:
-            # Unauthenticated users only see public notes
-            queryset = Note.objects.filter(public=True)
-
-        if tag_id is not None:
             queryset = Note.objects.filter(
-                    models.Q(public=True) | models.Q(tag_id=tag_id)
-                )
+                models.Q(public=public) | models.Q(user=self.request.user)
+            )
+        else:
+            queryset = Note.objects.filter(public=public)
+
+        if tag_id:
+            queryset = queryset.filter(tag_id=tag_id)
 
         return queryset.order_by('-created_at')
