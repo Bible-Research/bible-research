@@ -134,10 +134,11 @@ class NoteViewSet(viewsets.ModelViewSet):
         - When filtering by tag_id:
           Users see all public notes with that tag and their own notes
         """
-
+        note_pk = self.kwargs.get('pk', None)
         tag_id = self.request.query_params.get('tag_id', None)
-        if tag_id:
-            # If specific tag is requested, search for it also in public notes
+
+        if note_pk or tag_id:
+            # If specific note or tag is requested, search it in public notes
             public = True
         else:
             # Otherwise evaluate if user requested public notes
@@ -153,5 +154,8 @@ class NoteViewSet(viewsets.ModelViewSet):
 
         if tag_id:
             queryset = queryset.filter(tag_id=tag_id)
+
+        if note_pk:
+            queryset = queryset.filter(id=note_pk)
 
         return queryset.order_by('-created_at')
