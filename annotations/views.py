@@ -123,10 +123,11 @@ class NoteViewSet(viewsets.ModelViewSet):
         - Authenticated users see their own private notes by default
         - Unauthenticated users see only public notes
 
-        Supports filtering via query parameters:
+        Available query parameters:
+        - GET /api/v1/notes/ - List user's own notes
+        - GET /api/v1/notes/?public=true - List public notes and user's notes
+        - GET /api/v1/notes/<pk>/ - Retrieve a specific note by its ID
         - GET /api/v1/notes/?tag_id=<tag_id> - Filter by tag ID
-        - GET /api/v1/notes/?public=true:
-          List all public notes and user's own notes
 
         Special cases:
         - When requesting a specific note by ID:
@@ -146,9 +147,13 @@ class NoteViewSet(viewsets.ModelViewSet):
             public = public_param == 'true'
 
         if self.request.user.is_authenticated:
-            queryset = Note.objects.filter(
-                models.Q(public=public) | models.Q(user=self.request.user)
-            )
+            user_notes = models.Q(user=self.request.user)
+            if public:
+                queryset = Note.objects.filter(
+                  user_notes | models.Q(public=True)
+                )
+            else:
+                queryset = Note.objects.filter(user_notes)
         else:
             queryset = Note.objects.filter(public=public)
 
