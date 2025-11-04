@@ -114,9 +114,8 @@ class Note(models.Model):
         help_text="A primary tag associated with this note (optional)."
     )
 
-    # TODO: Rename to 'comment' as this text is only part of the note
     note_text = models.TextField(
-        help_text="The actual content of the note."
+        blank=True, help_text="The actual content of the note."
     )
 
     public = models.BooleanField(
