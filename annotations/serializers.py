@@ -208,7 +208,7 @@ class NoteSerializer(serializers.ModelSerializer):
         if not verses:
             return representation
 
-        book = verses[0].dbt_book_id
+        dbt_book_id = verses[0].dbt_book_id
         chapter = verses[0].chapter
 
         verse_numbers = [v.verse for v in verses]
@@ -220,8 +220,10 @@ class NoteSerializer(serializers.ModelSerializer):
             "verse_end": last_verse_num
         }
         dbt_client = DBTClient()
-        verse_text = dbt_client.get_verses(book, chapter, **kwargs)
+        verse_text = dbt_client.get_verses(dbt_book_id, chapter, **kwargs)
         verses_with_text = []
+
+        book_name = verses[0].book
 
         try:
             for verse in verses:
@@ -231,7 +233,7 @@ class NoteSerializer(serializers.ModelSerializer):
                 )
                 text = matching_verse['verse_text'] if matching_verse else ''
                 verse_data = {
-                    'book': book,
+                    'book': book_name,
                     'chapter': chapter,
                     'verse': verse.verse,
                     'text': text
