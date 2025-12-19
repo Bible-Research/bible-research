@@ -35,6 +35,7 @@ ALLOWED_HOSTS = [
     'bible-research.vercel.app',
     'reactive-bible.vercel.app',
     'bible-research-imdtwlgzd-industr-analysers-projects.vercel.app',
+    'reactive-bible-xi.vercel.app'
 ]
 
 INSTALLED_APPS = [
@@ -69,6 +70,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "https://reactive-bible.vercel.app",
+    "https://reactive-bible-xi.vercel.app"
 ]
 
 # Allow all Vercel automatically deployed PR preview origins
