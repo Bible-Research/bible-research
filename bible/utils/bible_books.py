@@ -78,7 +78,7 @@ def get_testament(book_id):
 def get_audio_bible_id(
     book_id,
     base_translation='ENGESV',
-    audio_type='1DA',
+    audio_type='2DA',
     codec='opus16'
 ):
     """Get the appropriate audio Bible ID based on testament.

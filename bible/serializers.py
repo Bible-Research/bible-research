@@ -24,8 +24,19 @@ class BiblePassageSerializer(serializers.Serializer):
       required=False,
       choices=['text', 'audio'],
       default='text',
-      help_text="Response format: 'text' for text verses, 'audio' for audio \
-        links"
+      help_text="Response format: 'text' for text verses, 'audio' for \
+        audio links"
+    )
+    translation = serializers.CharField(
+      required=False,
+      default='ENGESV',
+      help_text="Bible translation code (e.g., 'ENGESV', 'ENGKJV')"
+    )
+    audio_type = serializers.CharField(
+      required=False,
+      default='2DA',
+      help_text="Audio type code: '1DA' for audio, '2DA' for audio \
+        drama (default: '2DA')"
     )
 
     def to_representation(self, instance):
@@ -34,11 +45,17 @@ class BiblePassageSerializer(serializers.Serializer):
         book_name = instance.get('book_name', '')
         chapter = str(instance.get('chapter'))
         format = instance.get('format', 'text')
+        translation = instance.get('translation', 'ENGESV')
+        audio_type = instance.get('audio_type', '2DA')
 
         if format == 'audio':
-            bible_id = get_audio_bible_id(book_id)
+            bible_id = get_audio_bible_id(
+                book_id,
+                base_translation=translation,
+                audio_type=audio_type
+            )
         else:
-            bible_id = "ENGESV"
+            bible_id = translation
 
         try:
             verses_data = dbt_client.get_verses(
