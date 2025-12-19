@@ -1,6 +1,7 @@
 import logging
 from rest_framework import serializers
 from bible.services.dbt.client import DBTClient
+from bible.utils.bible_books import get_audio_bible_id
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,10 @@ class BiblePassageSerializer(serializers.Serializer):
         chapter = str(instance.get('chapter'))
         format = instance.get('format', 'text')
 
-        bible_id = "ENGESVO1DA-opus16" if format == 'audio' else "ENGESV"
+        if format == 'audio':
+            bible_id = get_audio_bible_id(book_id)
+        else:
+            bible_id = "ENGESV"
 
         try:
             verses_data = dbt_client.get_verses(
