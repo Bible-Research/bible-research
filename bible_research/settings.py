@@ -28,15 +28,7 @@ ESV_KEY = config.get('ESV_KEY')
 DBT_KEY = config.get('DBT_KEY')
 CONFIG_FILE = BASE_DIR / 'config.yaml'
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '0.0.0.0',
-    'bible-research.vercel.app',
-    'reactive-bible.vercel.app',
-    'bible-research-imdtwlgzd-industr-analysers-projects.vercel.app',
-    'reactive-bible-xi.vercel.app'
-]
+ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -67,11 +59,7 @@ MIDDLEWARE = [
     'bible_research.middleware.DeviceAndCountryMiddleware',
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "https://reactive-bible.vercel.app",
-    "https://reactive-bible-xi.vercel.app"
-]
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Allow all Vercel automatically deployed PR preview origins
 CORS_ALLOWED_ORIGIN_REGEXES = [
