@@ -20,11 +20,11 @@ class TranslationService:
             response = client.get_bibles(**params)
             translations = response.get('data', [])
         except Exception as e:
-            # In case the API fails, return an empty list
+            # In case the API fails, return an empty list.
             print(f"DBT API Error fetching translations: {e}")
             return []
 
-        # Process translations to remove video and simplify format info
+        # Process translations to remove video and simplify format info.
         return cls._process_translations(translations)
 
     @classmethod
@@ -34,18 +34,20 @@ class TranslationService:
         for trans in translations:
             all_filesets = []
             for source, fileset_list in trans.get('filesets', {}).items():
-                if source != 'dbp-vid':
-                    # Filter out video filesets
-                    non_video = [
-                        fs for fs in fileset_list
-                        if 'video' not in fs.get('type', '')
-                    ]
-                    all_filesets.extend(non_video)
+                if source == 'dbp-vid':
+                    continue
+
+                # Filter out video filesets.
+                non_video = [
+                    fs for fs in fileset_list
+                    if 'video' not in fs.get('type', '')
+                ]
+                all_filesets.extend(non_video)
 
             if not all_filesets:
-                continue  # Skip translations with only video
+                continue  # Skip translations with only video.
 
-            # Process filesets for frontend
+            # Process filesets for the frontend.
             processed_filesets = []
             for fs in all_filesets:
                 processed_filesets.append({
