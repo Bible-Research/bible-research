@@ -42,8 +42,11 @@ class DBTClient:
         if not api_key:
             raise ValueError("DBT_KEY not found in settings.")
 
+        self.api_key = api_key
+        self.base_url = "https://b4.dbt.io/api"
+
         config = Configuration(
-            host="https://b4.dbt.io/api",
+            host=self.base_url,
             api_key={'key': api_key}
         )
 

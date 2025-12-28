@@ -19,10 +19,8 @@ class BiblePassageView(APIView):
         - passage: Book and chapter (e.g., '2 Chronicles 14')
         - response_format: 'text' or 'audio' (default: 'text')
         - fileset_id: The specific DBT fileset ID to use for fetching content.
-        - fileset_id: The specific DBT fileset ID to use for fetching content.
 
     Example:
-        /api/v1/bible/?passage=John+3&fileset_id=ENGESV
         /api/v1/bible/?passage=John+3&fileset_id=ENGESV
     """
 
