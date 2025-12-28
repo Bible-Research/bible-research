@@ -1,7 +1,7 @@
 import logging
 from rest_framework import serializers
 from bible.services.dbt.client import DBTClient
-from bible.utils.bible_books import get_audio_bible_id
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +27,9 @@ class BiblePassageSerializer(serializers.Serializer):
       help_text="Response format: 'text' for text verses, 'audio' for \
         audio links"
     )
-    translation = serializers.CharField(
-      required=False,
-      default='ENGESV',
-      help_text="Bible translation code (e.g., 'ENGESV', 'ENGKJV')"
-    )
-    audio_type = serializers.CharField(
-      required=False,
-      default='2DA',
-      help_text="Audio type code: '1DA' for audio, '2DA' for audio \
-        drama (default: '2DA')"
+    fileset_id = serializers.CharField(
+      required=True,
+      help_text="DBT fileset ID for the specific translation and format"
     )
 
     def to_representation(self, instance):
@@ -45,17 +38,9 @@ class BiblePassageSerializer(serializers.Serializer):
         book_name = instance.get('book_name', '')
         chapter = str(instance.get('chapter'))
         format = instance.get('format', 'text')
-        translation = instance.get('translation', 'ENGESV')
-        audio_type = instance.get('audio_type', '2DA')
+        fileset_id = instance.get('fileset_id')
 
-        if format == 'audio':
-            bible_id = get_audio_bible_id(
-                book_id,
-                base_translation=translation,
-                audio_type=audio_type
-            )
-        else:
-            bible_id = translation
+        bible_id = fileset_id
 
         try:
             verses_data = dbt_client.get_verses(
