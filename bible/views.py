@@ -1,10 +1,14 @@
+import logging
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 
 from bible.utils.bible_books import get_dbt_book_id
 from .serializers import BiblePassageSerializer
 from .services.translation_service import TranslationService
+
+logger = logging.getLogger(__name__)
 
 
 class BiblePassageView(APIView):
@@ -15,8 +19,10 @@ class BiblePassageView(APIView):
         - passage: Book and chapter (e.g., '2 Chronicles 14')
         - response_format: 'text' or 'audio' (default: 'text')
         - fileset_id: The specific DBT fileset ID to use for fetching content.
+        - fileset_id: The specific DBT fileset ID to use for fetching content.
 
     Example:
+        /api/v1/bible/?passage=John+3&fileset_id=ENGESV
         /api/v1/bible/?passage=John+3&fileset_id=ENGESV
     """
 
@@ -25,13 +31,7 @@ class BiblePassageView(APIView):
         response_format = request.query_params.get(
             'response_format', 'text'
         )
-        fileset_id = request.query_params.get('fileset_id')
-
-        if not fileset_id:
-            return Response(
-                {"error": "fileset_id parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        fileset_id = request.query_params.get('fileset_id', 'ENGESV')
 
         if not passage:
             return Response(
@@ -78,6 +78,7 @@ class BiblePassageView(APIView):
                 'chapter': chapter,
                 'format': response_format,
                 'fileset_id': fileset_id,
+                'fileset_id': fileset_id,
             }
 
             serializer = BiblePassageSerializer(data=data)
@@ -107,11 +108,14 @@ class TranslationListView(APIView):
         /api/v1/translations/
         /api/v1/translations/?language_iso=eng
     """
-    permission_classes = []  # Public endpoint
+    permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
         language_iso = request.query_params.get('language_iso')
+        logger.info(f"Request for translations with language_iso: {language_iso}")
+
         translations = TranslationService.get_live_translations(language_iso)
+        logger.info(f"Found {len(translations)} translations for language_iso: {language_iso}")
 
         # Prepare response with detailed fileset information
         response_data = [
@@ -124,4 +128,5 @@ class TranslationListView(APIView):
             }
             for t in translations
         ]
+        logger.debug(f"Returning response data: {response_data}")
         return Response({'results': response_data})
