@@ -5,6 +5,7 @@ OpenAPI client.
 import logging
 import os
 import sys
+import requests
 from typing import Dict, Optional, Any
 from django.conf import settings
 
@@ -91,9 +92,22 @@ class DBTClient:
         Returns:
             Dictionary with Bible data
         """
+        params = kwargs.copy()
+        params['v'] = 4
+        params['key'] = self.api_key
+
         if language:
-            kwargs['language_code'] = language
-        return self._make_request(self.bibles_api.v4_bible_all, **kwargs)
+            params['language_code'] = language
+
+        try:
+            response = requests.get(f"{self.base_url}/bibles", params=params)
+            response.raise_for_status()  # Raise an exception for bad status codes
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"DBT API request error: {e}")
+            if e.response and e.response.status_code == 401:
+                logger.error("Authentication failed. Check your API key.")
+            raise
 
     def get_bible(self, bible_id: str, **kwargs) -> Dict[str, Any]:
         """
