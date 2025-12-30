@@ -62,10 +62,6 @@ class TranslationService:
             all_filesets = []
             for source, fileset_list in trans.get('filesets', {}).items():
                 if source == 'dbp-vid':
-                    logger.debug(
-                        "Skipping video source 'dbp-vid' for translation %s",
-                        trans.get('abbr'),
-                    )
                     continue
 
                 non_video = [

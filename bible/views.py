@@ -107,12 +107,13 @@ class TranslationListView(APIView):
 
     def get(self, request, *args, **kwargs):
         language_iso = request.query_params.get('language_iso')
-        logger.info(f"Request for translations with language_iso: {language_iso}")
+        logger.info(f"Request for {language_iso} translations")
 
         translations = TranslationService.get_live_translations(language_iso)
-        logger.info(f"Found {len(translations)} translations for language_iso: {language_iso}")
+        logger.info(
+          f"Found {len(translations)} translations for {language_iso}"
+        )
 
-        # Prepare response with detailed fileset information
         response_data = [
             {
                 'abbr': t['abbr'],
