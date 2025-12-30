@@ -1,7 +1,7 @@
 import logging
 from rest_framework import serializers
 from bible.services.dbt.client import DBTClient
-from bible.utils.bible_books import get_audio_bible_id
+
 
 logger = logging.getLogger(__name__)
 
@@ -20,23 +20,9 @@ class BiblePassageSerializer(serializers.Serializer):
       min_value=1,
       help_text="Chapter number"
     )
-    format = serializers.ChoiceField(
-      required=False,
-      choices=['text', 'audio'],
-      default='text',
-      help_text="Response format: 'text' for text verses, 'audio' for \
-        audio links"
-    )
-    translation = serializers.CharField(
-      required=False,
-      default='ENGESV',
-      help_text="Bible translation code (e.g., 'ENGESV', 'ENGKJV')"
-    )
-    audio_type = serializers.CharField(
-      required=False,
-      default='2DA',
-      help_text="Audio type code: '1DA' for audio, '2DA' for audio \
-        drama (default: '2DA')"
+    fileset_id = serializers.CharField(
+      required=True,
+      help_text="DBT fileset ID for the specific translation and format"
     )
 
     def to_representation(self, instance):
@@ -44,63 +30,45 @@ class BiblePassageSerializer(serializers.Serializer):
         book_id = instance.get('book')
         book_name = instance.get('book_name', '')
         chapter = str(instance.get('chapter'))
-        format = instance.get('format', 'text')
-        translation = instance.get('translation', 'ENGESV')
-        audio_type = instance.get('audio_type', '2DA')
-
-        if format == 'audio':
-            bible_id = get_audio_bible_id(
-                book_id,
-                base_translation=translation,
-                audio_type=audio_type
-            )
-        else:
-            bible_id = translation
+        fileset_id = instance.get('fileset_id')
 
         try:
-            verses_data = dbt_client.get_verses(
+            passage_data = dbt_client.get_verses(
               book_id,
               chapter,
-              bible_id=bible_id
+              bible_id=fileset_id
             )
 
-            if verses_data and 'data' in verses_data and verses_data['data']:
-                if format == 'audio':
-                    audio_data = verses_data['data'][0]
-                    response_data = {
-                        'book': book_id,
-                        'book_name': book_name,
-                        'chapter': int(chapter),
-                        'audio_url': audio_data.get('path'),
-                        'duration_seconds': audio_data.get('duration'),
-                        'file_size_bytes': audio_data.get('filesize_in_bytes'),
-                        'format': 'audio'
-                    }
-                else:
-                    response_data = {
-                        'book': book_id,
-                        'book_name': book_name,
-                        'chapter': int(chapter),
-                        'format': 'text',
-                        'verses': [
-                            {
-                                'verse': verse['verse_start'],
-                                'text': verse.get('verse_text', '')
-                            }
-                            for verse in verses_data['data']
-                            if 'verse_text' in verse
-                        ]
-                    }
+            audio_format = 'path' in passage_data['data'][0]
 
-                return response_data
+            if audio_format:
+                audio_data = passage_data['data'][0]
+                response_data = {
+                    'book': book_id,
+                    'book_name': book_name,
+                    'chapter': int(chapter),
+                    'audio_url': audio_data.get('path'),
+                    'duration_seconds': audio_data.get('duration'),
+                    'file_size_bytes': audio_data.get('filesize_in_bytes'),
+                    'format': 'audio'
+                }
+            else:
+                response_data = {
+                    'book': book_id,
+                    'book_name': book_name,
+                    'chapter': int(chapter),
+                    'format': 'text',
+                    'verses': [
+                        {
+                            'verse': verse['verse_start'],
+                            'text': verse.get('verse_text', '')
+                        }
+                        for verse in passage_data['data']
+                        if 'verse_text' in verse
+                    ]
+                }
 
-            return {
-                'book': book_id,
-                'book_name': book_name,
-                'chapter': int(chapter),
-                'verses': [],
-                'message': 'No verses found for the specified passage'
-            }
+            return response_data
 
         except Exception as e:
             logger.error(f"Error fetching Bible passage: {str(e)}")
@@ -108,5 +76,6 @@ class BiblePassageSerializer(serializers.Serializer):
                 'book': book_id,
                 'book_name': book_name,
                 'chapter': int(chapter),
-                'error': str(e)
+                'verses': [],
+                'message': 'No verses found for the specified passage'
             }

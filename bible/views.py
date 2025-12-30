@@ -1,8 +1,13 @@
+import logging
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .serializers import BiblePassageSerializer
+
 from bible.utils.bible_books import get_dbt_book_id
+from .serializers import BiblePassageSerializer
+from .services.translation_service import TranslationService
+
+logger = logging.getLogger(__name__)
 
 
 class BiblePassageView(APIView):
@@ -12,13 +17,10 @@ class BiblePassageView(APIView):
     Query Parameters:
         - passage: Book and chapter (e.g., '2 Chronicles 14')
         - response_format: 'text' or 'audio' (default: 'text')
-        - translation: Bible translation code
-                       (e.g., 'ENGESV', default: 'ENGESV')
-        - audio_type: Audio type - '1DA' for audio, '2DA' for
-                      audio drama (default: '2DA')
+        - fileset_id: The specific DBT fileset ID to use for fetching content.
 
     Example:
-        /api/v1/bible/?passage=2%20Chronicles%2014&translation=ENGESV
+        /api/v1/bible/?passage=John+3&fileset_id=ENGESV
     """
 
     def get(self, request, format=None):
@@ -26,8 +28,7 @@ class BiblePassageView(APIView):
         response_format = request.query_params.get(
             'response_format', 'text'
         )
-        translation = request.query_params.get('translation', 'ENGESV')
-        audio_type = request.query_params.get('audio_type', '2DA')
+        fileset_id = request.query_params.get('fileset_id', 'ENGESV')
 
         if not passage:
             return Response(
@@ -73,8 +74,7 @@ class BiblePassageView(APIView):
                 'book_name': book_name,
                 'chapter': chapter,
                 'format': response_format,
-                'translation': translation,
-                'audio_type': audio_type,
+                'fileset_id': fileset_id,
             }
 
             serializer = BiblePassageSerializer(data=data)
@@ -90,3 +90,39 @@ class BiblePassageView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class TranslationListView(APIView):
+    """
+    Lists available Bible translations by fetching live from DBT API.
+
+    Query Parameters:
+        - language_iso: Filter by ISO language code
+                       (e.g., 'eng', 'lvs')
+
+    Example:
+        /api/v1/translations/
+        /api/v1/translations/?language_iso=eng
+    """
+
+    def get(self, request, *args, **kwargs):
+        language_iso = request.query_params.get('language_iso')
+        logger.info(f"Request for {language_iso} translations")
+
+        translations = TranslationService.get_live_translations(language_iso)
+        logger.info(
+          f"Found {len(translations)} translations for {language_iso}"
+        )
+
+        response_data = [
+            {
+                'abbr': t['abbr'],
+                'name': t['name'],
+                'language': t['language'],
+                'language_iso': t['iso'],
+                'filesets': t['filesets'],
+            }
+            for t in translations
+        ]
+        logger.debug(f"Returning response data: {response_data}")
+        return Response({'results': response_data})
