@@ -2,7 +2,6 @@ import logging
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
 
 from bible.utils.bible_books import get_dbt_book_id
 from .serializers import BiblePassageSerializer
@@ -76,7 +75,6 @@ class BiblePassageView(APIView):
                 'chapter': chapter,
                 'format': response_format,
                 'fileset_id': fileset_id,
-                'fileset_id': fileset_id,
             }
 
             serializer = BiblePassageSerializer(data=data)
@@ -106,7 +104,6 @@ class TranslationListView(APIView):
         /api/v1/translations/
         /api/v1/translations/?language_iso=eng
     """
-    permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
         language_iso = request.query_params.get('language_iso')

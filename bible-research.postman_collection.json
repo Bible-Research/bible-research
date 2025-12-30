@@ -7,6 +7,52 @@
 	},
 	"item": [
 		{
+			"name": "Get Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const responseData = pm.response.json();",
+							"const tokenValue = responseData.token;",
+							"pm.environment.set(\"access_token\", tokenValue);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"{{username}}\",\n    \"password\": \"{{password}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/token/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"token",
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
 			"name": "Add Tag",
 			"request": {
 				"auth": {
@@ -19,7 +65,7 @@
 					"formdata": [
 						{
 							"key": "name",
-							"value": "Prophecy",
+							"value": "Test 4",
 							"type": "text"
 						},
 						{
@@ -30,15 +76,10 @@
 					]
 				},
 				"url": {
-					"raw": "http://127.0.0.1:8000/api/v1/tags/",
-					"protocol": "http",
+					"raw": "{{base_url}}/api/v1/tags/",
 					"host": [
-						"127",
-						"0",
-						"0",
-						"1"
+						"{{base_url}}"
 					],
-					"port": "8000",
 					"path": [
 						"api",
 						"v1",
@@ -47,8 +88,8 @@
 					],
 					"query": [
 						{
-							"key": "name",
-							"value": "Love",
+							"key": "",
+							"value": "",
 							"disabled": true
 						}
 					]
@@ -65,15 +106,10 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "http://127.0.0.1:8000/api/v1/tags/",
-					"protocol": "http",
+					"raw": "{{base_url}}/api/v1/tags/",
 					"host": [
-						"127",
-						"0",
-						"0",
-						"1"
+						"{{base_url}}"
 					],
-					"port": "8000",
 					"path": [
 						"api",
 						"v1",
@@ -101,7 +137,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"note_text\": \"This is my note for John 3:16 and 17. It's a key passage.\",\n    \"tag\": \"45d21623-3294-4b84-b86b-a92538a28eb9\",\n    \"verse_references\": [\n        {\n            \"book\": \"John\",\n            \"chapter\": 3,\n            \"verse\": 16\n        },\n        {\n            \"book\": \"John\",\n            \"chapter\": 3,\n            \"verse\": 17\n        }\n    ]\n}",
+					"raw": "{\n    \"note_text\": \"One\",\n    \"tag\": \"TAG1C918BEC85AC496\",\n    \"public\": true,\n    \"verse_references\": [\n        {\n            \"book\": \"2 Chronicles\",\n            \"chapter\": 14,\n            \"verse\": 1\n        },\n        {\n            \"book\": \"2 Chronicles\",\n            \"chapter\": 14,\n            \"verse\": 15\n        }\n   ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -109,15 +145,10 @@
 					}
 				},
 				"url": {
-					"raw": "http://127.0.0.1:8000/api/v1/notes/",
-					"protocol": "http",
+					"raw": "{{base_url}}/api/v1/notes/",
 					"host": [
-						"127",
-						"0",
-						"0",
-						"1"
+						"{{base_url}}"
 					],
-					"port": "8000",
 					"path": [
 						"api",
 						"v1",
@@ -129,7 +160,10 @@
 			"response": []
 		},
 		{
-			"name": "Get Post Notes",
+			"name": "Get Notes",
+			"protocolProfileBehavior": {
+				"disableCookies": false
+			},
 			"request": {
 				"auth": {
 					"type": "noauth"
@@ -137,24 +171,168 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "http://127.0.0.1:8000/api/v1/notes/",
-					"protocol": "http",
+					"raw": "{{base_url}}/api/v1/notes/?verse_text=true",
 					"host": [
-						"127",
-						"0",
-						"0",
-						"1"
+						"{{base_url}}"
 					],
-					"port": "8000",
 					"path": [
 						"api",
 						"v1",
 						"notes",
 						""
+					],
+					"query": [
+						{
+							"key": "public",
+							"value": "true",
+							"disabled": true
+						},
+						{
+							"key": "verse_text",
+							"value": "true"
+						}
 					]
 				}
 			},
 			"response": []
+		},
+		{
+			"name": "Get Translations",
+			"protocolProfileBehavior": {
+				"disableCookies": false
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/bible/translations/?language_iso=eng",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"bible",
+						"translations",
+						""
+					],
+					"query": [
+						{
+							"key": "language_iso",
+							"value": "eng"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Note by ID",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/notes/{{note_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"notes",
+						"{{note_id}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Notes by Tag ID",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/notes?tag_id={{tag_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"notes"
+					],
+					"query": [
+						{
+							"key": "tag_id",
+							"value": "{{tag_id}}"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Passage",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/bible?passage=1%20Peter%204&fileset_id=ENGESV",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"bible"
+					],
+					"query": [
+						{
+							"key": "passage",
+							"value": "1%20Peter%204"
+						},
+						{
+							"key": "fileset_id",
+							"value": "ENGESV"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
 		}
 	]
 }
