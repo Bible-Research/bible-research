@@ -15,14 +15,14 @@ class TranslationService:
     @classmethod
     def get_live_translations(cls, language_iso=None):
         """
-        Fetches translations and filters out video content in-memory.
+        Fetches translations and filters out video and audio stream content.
 
         Args:
             language_iso (str, optional): The language ISO code to filter by.
                 Defaults to None.
 
         Returns:
-            list: A list of translations with video content removed.
+            list: A list of translations without video and audio stream.
         """
         logger.info("Fetching live translations for language_iso: %s", language_iso)
         client = DBTClient()
@@ -48,45 +48,55 @@ class TranslationService:
     @classmethod
     def _process_translations(cls, translations):
         """
-        Removes video content and prepares fileset information.
+        Removes video, audio_stream, and audio_drama_stream content
+        and prepares fileset information.
 
         Args:
             translations (list): A list of translations to process.
 
         Returns:
-            list: A list of processed translations with video content removed.
+            list: A list of processed translations with excluded content removed.
         """
         logger.info("Processing %d translations.", len(translations))
         processed = []
+
+        # Define specific types to exclude
+        excluded_types = {'video', 'audio_stream', 'audio_drama_stream'}
+
         for trans in translations:
             all_filesets = []
             for source, fileset_list in trans.get('filesets', {}).items():
+                # Skip the video source entirely
                 if source == 'dbp-vid':
                     continue
 
-                non_video = [
-                    fs
-                    for fs in fileset_list
-                    if 'video' not in fs.get('type', '')
-                ]
-                all_filesets.extend(non_video)
+                filtered_filesets = []
+                for fs in fileset_list:
+                    fs_type = fs.get('type', '')
+
+                    # Exclude if 'video' is in the string OR it matches our specific list
+                    is_excluded = 'video' in fs_type or fs_type in excluded_types
+
+                    if not is_excluded:
+                        filtered_filesets.append(fs)
+
+                all_filesets.extend(filtered_filesets)
 
             if not all_filesets:
                 logger.warning(
-                    "No non-video filesets for translation %s. Skipping.",
+                    "No valid filesets for translation %s. Skipping.",
                     trans.get('abbr'),
                 )
                 continue
 
-            processed_filesets = []
-            for fs in all_filesets:
-                processed_filesets.append(
-                    {
-                        'id': fs.get('id'),
-                        'type': fs.get('type'),
-                        'size': fs.get('size'),
-                    }
-                )
+            processed_filesets = [
+                {
+                    'id': fs.get('id'),
+                    'type': fs.get('type'),
+                    'size': fs.get('size'),
+                }
+                for fs in all_filesets
+            ]
 
             trans['filesets'] = processed_filesets
             processed.append(trans)
