@@ -2,6 +2,7 @@ Django==4.2.6
 PyYAML
 django-cors-headers
 djangorestframework
+drf-spectacular
 requests
 pycountry
 psycopg2-binary==2.9.9

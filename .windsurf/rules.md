@@ -102,6 +102,7 @@ python manage.py test annotations  # Test specific app
 - ❌ Use lowercase commit types
 
 ## Always Do
+- ✅ Commit changes after each successful step in the plan.
 - ✅ Validate user input
 - ✅ Handle API errors
 - ✅ Add docstrings
