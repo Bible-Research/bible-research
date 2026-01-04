@@ -7,16 +7,22 @@ class TagAdmin(admin.ModelAdmin):
     """
     Admin configuration for the Tag model.
     """
-    list_display = ('name', 'parent_tag', 'created_at', 'updated_at')
-    search_fields = ('name',)
-    list_filter = ('created_at', 'updated_at', 'parent_tag')
+    list_display = (
+        'name',
+        'user',
+        'parent_tag',
+        'created_at',
+        'updated_at',
+    )
+    search_fields = ('name', 'user__username')
+    list_filter = ('user', 'created_at', 'updated_at', 'parent_tag')
     # Use a raw input for parent_tag for better UX with many tags
-    raw_id_fields = ('parent_tag',)
+    raw_id_fields = ('user', 'parent_tag',)
 
     # Optionally, you can add fields or fieldsets to customize the edit form
     fieldsets = (
         (None, {
-            'fields': ('name', 'parent_tag',)
+            'fields': ('name', 'user', 'parent_tag',)
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -32,14 +38,21 @@ class NoteAdmin(admin.ModelAdmin):
     """
     Admin configuration for the Note model.
     """
-    list_display = ('id', 'user', 'note_text', 'created_at', 'updated_at')
-    search_fields = ('note_text',)
-    list_filter = ('created_at', 'updated_at', 'user')
+    list_display = (
+        'id',
+        'user',
+        'note_text',
+        'public',
+        'created_at',
+        'updated_at',
+    )
+    search_fields = ('note_text', 'user__username')
+    list_filter = ('public', 'user', 'created_at', 'updated_at')
     raw_id_fields = ('user',)
 
     fieldsets = (
         (None, {
-            'fields': ('user', 'note_text', 'tag')
+            'fields': ('user', 'note_text', 'public', 'tag')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
