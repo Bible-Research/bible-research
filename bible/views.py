@@ -30,7 +30,13 @@ class BiblePassageView(APIView):
         )
         fileset_id = request.query_params.get('fileset_id', 'ENGESV')
 
+        logger.info(
+            f"BiblePassageView.get called with passage: {passage}, "
+            f"format: {response_format}, fileset_id: {fileset_id}"
+        )
+
         if not passage:
+            logger.warning("Request missing required 'passage' parameter")
             return Response(
                 {
                     "error": "Passage parameter is required. "
@@ -40,14 +46,22 @@ class BiblePassageView(APIView):
             )
 
         if response_format not in ['text', 'audio']:
+            logger.warning(
+                f"Invalid response_format: {response_format}"
+            )
             return Response(
                 {"error": "Invalid format. Use 'text' or 'audio'"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
+            logger.debug(f"Parsing passage: {passage}")
             parts = passage.split()
             if len(parts) < 2:
+                logger.error(
+                    f"Invalid passage format: {passage} "
+                    f"(parts: {parts})"
+                )
                 raise ValueError(
                     "Invalid passage format. "
                     "Use 'Book Chapter' (e.g., 'John 3')"
@@ -56,17 +70,33 @@ class BiblePassageView(APIView):
             # The book name might have spaces (e.g., "1 John")
             chapter_part = parts[-1]
             book_name = ' '.join(parts[:-1])
+            logger.debug(
+                f"Extracted book_name: {book_name}, "
+                f"chapter_part: {chapter_part}"
+            )
 
             # Convert book name to standard book ID
             book_id = get_dbt_book_id(book_name)
             if not book_id:
+                logger.error(f"Unknown book name: {book_name}")
                 raise ValueError(f"Unknown book: {book_name}")
+            logger.debug(f"Resolved book_id: {book_id}")
 
             try:
                 chapter = int(chapter_part)
                 if chapter <= 0:
-                    raise ValueError("Chapter must be a positive number")
-            except ValueError:
+                    logger.error(
+                        f"Invalid chapter number: {chapter} "
+                        f"(must be positive)"
+                    )
+                    raise ValueError(
+                        "Chapter must be a positive number"
+                    )
+                logger.debug(f"Parsed chapter number: {chapter}")
+            except ValueError as ve:
+                logger.error(
+                    f"Failed to parse chapter: {chapter_part} - {ve}"
+                )
                 raise ValueError("Chapter must be a valid number")
 
             data = {
@@ -76,16 +106,28 @@ class BiblePassageView(APIView):
                 'format': response_format,
                 'fileset_id': fileset_id,
             }
+            logger.debug(f"Prepared data for serializer: {data}")
 
             serializer = BiblePassageSerializer(data=data)
             if serializer.is_valid():
+                logger.info(
+                    f"Successfully retrieved passage: "
+                    f"{book_name} {chapter} ({fileset_id})"
+                )
                 return Response(serializer.to_representation(data))
+
+            logger.error(
+                f"Serializer validation failed: {serializer.errors}"
+            )
             return Response(
                 serializer.errors,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         except Exception as e:
+            logger.exception(
+                f"Error processing Bible passage request: {passage} - {e}"
+            )
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -107,22 +149,41 @@ class TranslationListView(APIView):
 
     def get(self, request, *args, **kwargs):
         language_iso = request.query_params.get('language_iso')
-        logger.info(f"Request for {language_iso} translations")
-
-        translations = TranslationService.get_live_translations(language_iso)
         logger.info(
-          f"Found {len(translations)} translations for {language_iso}"
+            f"TranslationListView.get called with "
+            f"language_iso: {language_iso or 'all'}"
         )
 
-        response_data = [
-            {
-                'abbr': t['abbr'],
-                'name': t['name'],
-                'language': t['language'],
-                'language_iso': t['iso'],
-                'filesets': t['filesets'],
-            }
-            for t in translations
-        ]
-        logger.debug(f"Returning response data: {response_data}")
-        return Response({'results': response_data})
+        try:
+            translations = TranslationService.get_live_translations(
+                language_iso
+            )
+            logger.info(
+                f"Found {len(translations)} translations "
+                f"for language_iso: {language_iso or 'all'}"
+            )
+
+            response_data = [
+                {
+                    'abbr': t['abbr'],
+                    'name': t['name'],
+                    'language': t['language'],
+                    'language_iso': t['iso'],
+                    'filesets': t['filesets'],
+                }
+                for t in translations
+            ]
+            logger.debug(
+                f"Returning {len(response_data)} translations"
+            )
+            return Response({'results': response_data})
+
+        except Exception as e:
+            logger.exception(
+                f"Error fetching translations for "
+                f"language_iso: {language_iso} - {e}"
+            )
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
