@@ -100,8 +100,7 @@ class NoteViewSet(viewsets.ModelViewSet):
                 instance.user != self.request.user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
-                "You do not have permission to update this note."
-            )
+                "You do not have permission to update this note.")
         serializer.save()
 
     def perform_destroy(self, instance):
@@ -113,8 +112,7 @@ class NoteViewSet(viewsets.ModelViewSet):
                 instance.user != self.request.user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
-                "You do not have permission to delete this note."
-            )
+                "You do not have permission to delete this note.")
         instance.delete()
 
     def get_queryset(self):

@@ -54,19 +54,9 @@ class Tag(models.Model):
         verbose_name = "Tag"
         verbose_name_plural = "Tags"
 
-        # TODO: Ensure user cannot create two top-level tags with the same name
-        # or two child tags with the same name under the same parent.
-        # Replace first two `constraints` with this when users added:
-        # unique_together = ('user', 'name', 'parent_tag')
-        # ordering = ['name']
-
-        constraints = [
-            UniqueConstraint(
-                fields=['user', 'name', 'parent_tag'],
-                condition=Q(parent_tag__isnull=False),
-                name='unique_child_tag_name_per_parent_per_user'
-            ),
-        ]
+        # Ensures that a user cannot have two tags with the same name and parent.
+        unique_together = ('user', 'name', 'parent_tag')
+        ordering = ['name']
 
     def __str__(self):
         """
