@@ -100,8 +100,11 @@ python manage.py test annotations  # Test specific app
 - ❌ Skip authentication checks
 - ❌ Use raw SQL (use ORM)
 - ❌ Use lowercase commit types
+- ❌ Commit the plan.md file
+- ❌ Apply migrations without approval, even in turbo mode
 
 ## Always Do
+- ✅ When creating a plan, write it to a markdown file with enough detail for another person or AI to execute it.
 - ✅ Commit changes after each successful step in the plan.
 - ✅ Validate user input
 - ✅ Handle API errors
