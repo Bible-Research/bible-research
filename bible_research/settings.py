@@ -12,21 +12,75 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import os
 from pathlib import Path
-import yaml
+import textwrap
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-CONFIG_FILE = BASE_DIR / 'config.yaml'
+# --- Settings Configuration ---
+# Use individual environment variables on Vercel, local file otherwise
 
-with open(CONFIG_FILE, 'r') as f:
-    config = yaml.safe_load(f)
+IS_VERCEL = os.environ.get('VERCEL') == '1'
 
-SECRET_KEY = config.get('SECRET_KEY')
-DEBUG = config.get('DEBUG', False)
-ESV_KEY = config.get('ESV_KEY')
-DBT_KEY = config.get('DBT_KEY')
-CONFIG_FILE = BASE_DIR / 'config.yaml'
+if IS_VERCEL:
+    # On Vercel: Use environment variables directly, no YAML file
+    CONFIG_FILE = None
+
+    # Create ca.pem at runtime if database cert is provided
+    CA_PEM_PATH = None
+    capem_content = os.environ.get('DB_SSL_CERT')
+    if capem_content:
+        CA_PEM_PATH = '/tmp/ca.pem'
+        if not os.path.exists(CA_PEM_PATH):
+            lines = capem_content.replace(
+                "-----BEGIN CERTIFICATE----- ",
+                "-----BEGIN CERTIFICATE-----\n"
+            )
+            lines = lines.replace(
+                " -----END CERTIFICATE-----",
+                "\n-----END CERTIFICATE-----"
+            )
+            base64_content = lines.split("\n", 1)[1].rsplit(
+                "\n", 1
+            )[0]
+            formatted_content = textwrap.fill(base64_content, 64)
+            pem_content = (
+                f"-----BEGIN CERTIFICATE-----\n"
+                f"{formatted_content}\n"
+                f"-----END CERTIFICATE-----"
+            )
+            with open(CA_PEM_PATH, 'w') as f:
+                f.write(pem_content)
+else:
+    # Local development: Use config.yaml from project root
+    CONFIG_FILE = BASE_DIR / 'config.yaml'
+    CA_PEM_PATH = None
+
+# Load config from the determined path (only for local dev)
+if CONFIG_FILE and CONFIG_FILE.exists():
+    import yaml
+    with open(CONFIG_FILE, 'r') as f:
+        config = yaml.safe_load(f)
+elif not IS_VERCEL:
+    raise FileNotFoundError(
+        'Config file does not exist. Please provide config.yaml'
+    )
+else:
+    # On Vercel, no config.yaml needed
+    config = {}
+
+
+def get_env(key, default=None, required=False):
+    value = config.get(key, os.environ.get(key, default))
+    if required and value is None:
+        raise ValueError(f"Required setting '{key}' is not set.")
+    return value
+
+
+SECRET_KEY = get_env('SECRET_KEY', required=True)
+DEBUG = get_env('DEBUG', 'False') == 'True'
+ESV_KEY = get_env('ESV_KEY')
+DBT_KEY = get_env('DBT_KEY')
 
 ALLOWED_HOSTS = ["*"]
 
@@ -88,11 +142,42 @@ TEMPLATES = [
 WSGI_APPLICATION = 'bible_research.wsgi.application'
 
 
-DATABASES = config.get('DATABASES')
+# Database configuration
+if DEBUG:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+else:
+    if IS_VERCEL:
+        # On Vercel: Build database config from individual env vars
+        db_config = {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': get_env('DB_NAME', required=True),
+            'USER': get_env('DB_USER', required=True),
+            'PASSWORD': get_env('DB_PASSWORD', required=True),
+            'HOST': get_env('DB_HOST', required=True),
+            'PORT': get_env('DB_PORT', '5432'),
+        }
 
-if not DEBUG:
-    cert_path = DATABASES['default']['OPTIONS']['sslrootcert']
-    DATABASES['default']['OPTIONS']['sslrootcert'] = str(BASE_DIR / cert_path)
+        # Add SSL options if certificate is provided
+        if CA_PEM_PATH:
+            db_config['OPTIONS'] = {
+                'sslmode': 'require',
+                'sslrootcert': CA_PEM_PATH
+            }
+
+        DATABASES = {'default': db_config}
+    else:
+        # Local: Use DATABASES from config.yaml
+        DATABASES = config.get('DATABASES')
+        if DATABASES and 'default' in DATABASES:
+            opts = DATABASES['default'].get('OPTIONS', {})
+            if 'sslrootcert' in opts:
+                cert_path = opts['sslrootcert']
+                opts['sslrootcert'] = str(BASE_DIR / cert_path)
 
 
 # Password validation
@@ -100,20 +185,28 @@ if not DEBUG:
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation' 
-                '.UserAttributeSimilarityValidator',
+        'NAME': (
+            'django.contrib.auth.password_validation.'
+            'UserAttributeSimilarityValidator'
+        ),
     },
     {
-        'NAME': 'django.contrib.auth.password_validation' 
-                '.MinimumLengthValidator',
+        'NAME': (
+            'django.contrib.auth.password_validation.'
+            'MinimumLengthValidator'
+        ),
     },
     {
-        'NAME': 'django.contrib.auth.password_validation' 
-                '.CommonPasswordValidator',
+        'NAME': (
+            'django.contrib.auth.password_validation.'
+            'CommonPasswordValidator'
+        ),
     },
     {
-        'NAME': 'django.contrib.auth.password_validation' 
-                '.NumericPasswordValidator',
+        'NAME': (
+            'django.contrib.auth.password_validation.'
+            'NumericPasswordValidator'
+        ),
     },
 ]
 
@@ -149,7 +242,10 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
         'bible_research.authentication.BearerTokenAuthentication',
-        'bible_research.authentication.CSRFExemptSessionAuthentication',
+        (
+            'bible_research.authentication.'
+            'CSRFExemptSessionAuthentication'
+        ),
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -165,7 +261,10 @@ SPECTACULAR_SETTINGS = {
 }
 
 
-def create_log_handler(handler_name, level, filename=None, max_bytes=10485760, backup_count=10):
+def create_log_handler(
+    handler_name, level, filename=None, max_bytes=10485760,
+    backup_count=10
+):
     if DEBUG and filename:
         # Create logs directory if it doesn't exist
         logs_dir = os.path.join(BASE_DIR, 'logs')
@@ -192,7 +291,10 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'format': (
+                '{levelname} {asctime} {module} {process:d} '
+                '{thread:d} {message}'
+            ),
             'style': '{',
         },
         'simple': {
