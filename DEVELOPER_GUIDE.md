@@ -12,6 +12,8 @@
 9. [Development Workflow](#development-workflow)
 10. [Testing](#testing)
 11. [Deployment](#deployment)
+12. [Contributing](#contributing)
+13. [Additional Resources](#additional-resources)
 
 ---
 
@@ -211,6 +213,18 @@ The project uses two special accounts:
 
 ## API Endpoints
 
+### Interactive API Documentation
+
+The API includes auto-generated interactive documentation:
+
+- **Swagger UI**: `http://localhost:8000/api/v1/docs/`
+- **ReDoc**: `http://localhost:8000/api/v1/redoc/`
+- **OpenAPI Schema**: `http://localhost:8000/api/v1/schema/`
+
+These provide a complete, interactive reference for all endpoints
+with request/response examples and the ability to test API calls
+directly from your browser.
+
 ### Base URL
 ```
 http://localhost:8000/api/v1/
@@ -287,7 +301,7 @@ Authorization: Token <your-token>
 
 #### Get Bible Passage (Text)
 ```
-GET /api/v1/bible/?passage=John+3&translation=ENGESV
+GET /api/v1/bible/?passage=John+3&fileset_id=ENGESV
 ```
 **Response**:
 ```json
@@ -308,7 +322,7 @@ GET /api/v1/bible/?passage=John+3&translation=ENGESV
 #### Get Bible Passage (Audio)
 ```
 GET /api/v1/bible/?passage=John+3&response_format=audio&
-    translation=ENGESV&audio_type=2DA
+    fileset_id=ENGESVN2DA
 ```
 **Response**:
 ```json
@@ -324,10 +338,50 @@ GET /api/v1/bible/?passage=John+3&response_format=audio&
 ```
 
 **Query Parameters**:
-- `passage` (required): Book and chapter (e.g., "John 3", "2 Chronicles 14")
+- `passage` (required): Book and chapter
+  (e.g., "John 3", "2 Chronicles 14")
 - `response_format`: "text" or "audio" (default: "text")
-- `translation`: Bible translation code (default: "ENGESV")
-- `audio_type`: "1DA" (audio) or "2DA" (audio drama, default)
+- `fileset_id`: DBT fileset ID for the specific translation and
+  format (default: "ENGESV")
+  - For text: Use translation codes like "ENGESV", "ENGKJV"
+  - For audio: Use audio fileset codes like "ENGESVN2DA"
+
+#### List Available Translations
+```
+GET /api/v1/bible/translations/
+```
+**Response**:
+```json
+{
+  "results": [
+    {
+      "abbr": "ESV",
+      "name": "English Standard Version",
+      "language": "English",
+      "language_iso": "eng",
+      "filesets": [
+        {
+          "id": "ENGESV",
+          "type": "text_plain"
+        },
+        {
+          "id": "ENGESVN2DA",
+          "type": "audio_drama"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Query Parameters**:
+- `language_iso` (optional): Filter by ISO language code
+  (e.g., "eng", "lvs")
+
+**Example**:
+```
+GET /api/v1/bible/translations/?language_iso=eng
+```
 
 ### Tags
 
@@ -809,4 +863,4 @@ For questions or issues:
 
 ---
 
-**Last Updated**: 2025-12-28
+**Last Updated**: 2026-03-01
