@@ -13,6 +13,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/', include('bible.urls')),
     path('api/v1/', include('annotations.urls')),
+    path('api/v1/users/', include('users.urls')),
     path('api/token/', obtain_auth_token, name='api_token'),
 
     # API Schema and Documentation

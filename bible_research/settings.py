@@ -32,23 +32,38 @@ if IS_VERCEL:
     if capem_content:
         CA_PEM_PATH = '/tmp/ca.pem'
         if not os.path.exists(CA_PEM_PATH):
-            lines = capem_content.replace(
-                "-----BEGIN CERTIFICATE----- ",
-                "-----BEGIN CERTIFICATE-----\n"
-            )
-            lines = lines.replace(
-                " -----END CERTIFICATE-----",
-                "\n-----END CERTIFICATE-----"
-            )
-            base64_content = lines.split("\n", 1)[1].rsplit(
-                "\n", 1
-            )[0]
-            formatted_content = textwrap.fill(base64_content, 64)
-            pem_content = (
-                f"-----BEGIN CERTIFICATE-----\n"
-                f"{formatted_content}\n"
-                f"-----END CERTIFICATE-----"
-            )
+            # Handle both single-line and multi-line formats
+            if '\n' not in capem_content:
+                # Single line format - add newlines
+                lines = capem_content.replace(
+                    "-----BEGIN CERTIFICATE----- ",
+                    "-----BEGIN CERTIFICATE-----\n"
+                )
+                lines = lines.replace(
+                    " -----END CERTIFICATE-----",
+                    "\n-----END CERTIFICATE-----"
+                )
+                # Extract base64 content and reformat
+                parts = lines.split("\n")
+                if len(parts) >= 3:
+                    base64_content = ''.join(
+                        parts[1:-1]
+                    ).replace(' ', '')
+                    formatted_content = textwrap.fill(
+                        base64_content, 64
+                    )
+                    pem_content = (
+                        f"-----BEGIN CERTIFICATE-----\n"
+                        f"{formatted_content}\n"
+                        f"-----END CERTIFICATE-----"
+                    )
+                else:
+                    # Fallback: use as-is
+                    pem_content = capem_content
+            else:
+                # Already has newlines, use as-is
+                pem_content = capem_content
+
             with open(CA_PEM_PATH, 'w') as f:
                 f.write(pem_content)
 else:
@@ -101,6 +116,7 @@ INSTALLED_APPS = [
     # My apps
     'bible.apps.BibleConfig',
     'annotations.apps.AnnotationsConfig',
+    'users.apps.UsersConfig',
 ]
 
 MIDDLEWARE = [
