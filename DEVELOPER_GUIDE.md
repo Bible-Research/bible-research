@@ -234,6 +234,55 @@ POST /api/token/
 }
 ```
 
+### User Management
+
+#### Register New User
+```
+POST /api/v1/users/register/
+```
+**Request Body**:
+```json
+{
+  "username": "newuser",
+  "email": "user@example.com",
+  "password": "securepass123",
+  "password_confirm": "securepass123"
+}
+```
+**Response**:
+```json
+{
+  "user": {
+    "id": 3,
+    "username": "newuser",
+    "email": "user@example.com",
+    "date_joined": "2026-03-01T07:11:10Z"
+  },
+  "token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
+  "message": "User registered successfully"
+}
+```
+**Notes**:
+- Email is optional
+- Password must be at least 8 characters
+- Returns authentication token automatically
+- No authentication required for this endpoint
+
+#### Get Current User
+```
+GET /api/v1/users/me/
+Authorization: Token <your-token>
+```
+**Response**:
+```json
+{
+  "id": 3,
+  "username": "newuser",
+  "email": "user@example.com",
+  "date_joined": "2026-03-01T07:11:10Z"
+}
+```
+
 ### Bible Passages
 
 #### Get Bible Passage (Text)
