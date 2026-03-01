@@ -6,6 +6,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
+from drf_spectacular.utils import (
+    extend_schema,
+    OpenApiResponse,
+    OpenApiExample
+)
 
 from .serializers import (
     UserRegistrationSerializer,
@@ -16,6 +21,41 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    request=UserRegistrationSerializer,
+    responses={
+        201: OpenApiResponse(
+            description="User registered successfully",
+            examples=[
+                OpenApiExample(
+                    'Success Response',
+                    value={
+                        'user': {
+                            'id': 3,
+                            'username': 'newuser',
+                            'email': 'user@example.com',
+                            'date_joined': '2026-03-01T07:11:10Z'
+                        },
+                        'token': (
+                            'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'
+                        ),
+                        'message': 'User registered successfully'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(
+            description="Validation error"
+        )
+    },
+    description=(
+        "Register a new user account. "
+        "Email is optional. Password must be at least "
+        "8 characters. Returns user data and "
+        "authentication token."
+    ),
+    tags=['Users']
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user(request):
@@ -61,6 +101,17 @@ def register_user(request):
     )
 
 
+@extend_schema(
+    responses={
+        200: UserSerializer,
+    },
+    description=(
+        "Retrieve the current authenticated user's "
+        "information including username, email, and "
+        "date joined."
+    ),
+    tags=['Users']
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def current_user(request):
