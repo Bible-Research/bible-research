@@ -277,6 +277,10 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
 }
 
+# Logging configuration for production and development.
+# This sends logs to the console, where platforms like GCP/Vercel can
+# capture them. File logging is removed as it's not suitable for
+# read-only filesystems.
 
 def create_log_handler(
     handler_name, level, filename=None, max_bytes=10485760,
@@ -321,7 +325,6 @@ LOGGING = {
     },
     'handlers': {
         'console': {
-            'level': 'INFO',
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
@@ -334,9 +337,14 @@ LOGGING = {
             'level': 'INFO',
             'propagate': True,
         },
-        'tv_archive': {
+        'bible': {
             'handlers': ['console', 'file_debug'],
-            'level': 'DEBUG',
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'annotations': {
+            'handlers': ['console', 'file_debug'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': True,
         }
     },
