@@ -14,88 +14,10 @@ import os
 from pathlib import Path
 import textwrap
 
+import dj_database_url
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-# --- Settings Configuration ---
-# Use individual environment variables on Vercel, local file otherwise
-
-IS_VERCEL = os.environ.get('VERCEL') == '1'
-
-if IS_VERCEL:
-    # On Vercel: Use environment variables directly, no YAML file
-    CONFIG_FILE = None
-
-    # Create ca.pem at runtime if database cert is provided
-    CA_PEM_PATH = None
-    capem_content = os.environ.get('DB_SSL_CERT')
-    if capem_content:
-        CA_PEM_PATH = '/tmp/ca.pem'
-        if not os.path.exists(CA_PEM_PATH):
-            # Handle both single-line and multi-line formats
-            if '\n' not in capem_content:
-                # Single line format - add newlines
-                lines = capem_content.replace(
-                    "-----BEGIN CERTIFICATE----- ",
-                    "-----BEGIN CERTIFICATE-----\n"
-                )
-                lines = lines.replace(
-                    " -----END CERTIFICATE-----",
-                    "\n-----END CERTIFICATE-----"
-                )
-                # Extract base64 content and reformat
-                parts = lines.split("\n")
-                if len(parts) >= 3:
-                    base64_content = ''.join(
-                        parts[1:-1]
-                    ).replace(' ', '')
-                    formatted_content = textwrap.fill(
-                        base64_content, 64
-                    )
-                    pem_content = (
-                        f"-----BEGIN CERTIFICATE-----\n"
-                        f"{formatted_content}\n"
-                        f"-----END CERTIFICATE-----"
-                    )
-                else:
-                    # Fallback: use as-is
-                    pem_content = capem_content
-            else:
-                # Already has newlines, use as-is
-                pem_content = capem_content
-
-            with open(CA_PEM_PATH, 'w') as f:
-                f.write(pem_content)
-else:
-    # Local development: Use config.yaml from project root
-    CONFIG_FILE = BASE_DIR / 'config.yaml'
-    CA_PEM_PATH = None
-
-# Load config from the determined path (only for local dev)
-if CONFIG_FILE and CONFIG_FILE.exists():
-    import yaml
-    with open(CONFIG_FILE, 'r') as f:
-        config = yaml.safe_load(f)
-elif not IS_VERCEL:
-    raise FileNotFoundError(
-        'Config file does not exist. Please provide config.yaml'
-    )
-else:
-    # On Vercel, no config.yaml needed
-    config = {}
-
-
-def get_env(key, default=None, required=False):
-    value = config.get(key, os.environ.get(key, default))
-    if required and value is None:
-        raise ValueError(f"Required setting '{key}' is not set.")
-    return value
-
-
-SECRET_KEY = get_env('SECRET_KEY', required=True)
-DEBUG = get_env('DEBUG', 'False') == 'True'
-ESV_KEY = get_env('ESV_KEY')
-DBT_KEY = get_env('DBT_KEY')
 
 ALLOWED_HOSTS = ["*"]
 
@@ -158,42 +80,121 @@ TEMPLATES = [
 WSGI_APPLICATION = 'bible_research.wsgi.application'
 
 
-# Database configuration
-if DEBUG:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
+# --- Environment-Specific Configuration ---
+
+IS_GCP_ENVIRONMENT = os.environ.get('GAE_APPLICATION') is not None
+IS_VERCEL = os.environ.get('VERCEL') == '1'
+
+if IS_GCP_ENVIRONMENT:
+    # --- Production on Google Cloud ---
+    from .gcp import get_secret
+
+    SECRET_KEY = get_secret('DJANGO_SECRET_KEY')
+    DBT_KEY = get_secret('DBT_KEY')
+    ESV_KEY = get_secret('ESV_KEY')
+    DEBUG = False
+
+    # Assumes DATABASE_URL is stored in Secret Manager
+    database_url = get_secret('DATABASE_URL')
+    db_config = dj_database_url.parse(database_url)
+
+    # Handle SSL certificate from Secret Manager
+    db_ssl_cert_content = get_secret('DB_SSL_CERT')
+    if db_ssl_cert_content:
+        CA_PEM_PATH = '/tmp/ca.pem'
+        if not os.path.exists(CA_PEM_PATH):
+            # The content from Secret Manager should already be formatted
+            with open(CA_PEM_PATH, 'w') as f:
+                f.write(db_ssl_cert_content)
+
+        db_config.setdefault('OPTIONS', {})
+        db_config['OPTIONS']['sslmode'] = 'require'
+        db_config['OPTIONS']['sslrootcert'] = CA_PEM_PATH
+    DATABASES = {'default': db_config}
+
+elif IS_VERCEL:
+    # --- Production on Vercel ---
+    SECRET_KEY = os.environ.get('SECRET_KEY')
+    DBT_KEY = os.environ.get('DBT_KEY')
+    ESV_KEY = os.environ.get('ESV_KEY')
+    DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+
+    # Build database config from individual env vars
+    db_config = {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
     }
-else:
-    if IS_VERCEL:
-        # On Vercel: Build database config from individual env vars
-        db_config = {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': get_env('DB_NAME', required=True),
-            'USER': get_env('DB_USER', required=True),
-            'PASSWORD': get_env('DB_PASSWORD', required=True),
-            'HOST': get_env('DB_HOST', required=True),
-            'PORT': get_env('DB_PORT', '5432'),
+
+    # Create ca.pem at runtime if database cert is provided
+    CA_PEM_PATH = None
+    capem_content = os.environ.get('DB_SSL_CERT')
+    if capem_content:
+        CA_PEM_PATH = '/tmp/ca.pem'
+        if not os.path.exists(CA_PEM_PATH):
+            if '\n' not in capem_content:
+                lines = capem_content.replace(
+                    "-----BEGIN CERTIFICATE----- ",
+                    "-----BEGIN CERTIFICATE-----\n"
+                )
+                lines = lines.replace(
+                    " -----END CERTIFICATE-----",
+                    "\n-----END CERTIFICATE-----"
+                )
+                parts = lines.split("\n")
+                if len(parts) >= 3:
+                    base64_content = ''.join(parts[1:-1]).replace(' ', '')
+                    formatted_content = textwrap.fill(base64_content, 64)
+                    pem_content = (
+                        f"-----BEGIN CERTIFICATE-----\n"
+                        f"{formatted_content}\n"
+                        f"-----END CERTIFICATE-----"
+                    )
+                else:
+                    pem_content = capem_content
+            else:
+                pem_content = capem_content
+
+            with open(CA_PEM_PATH, 'w') as f:
+                f.write(pem_content)
+
+        db_config['OPTIONS'] = {
+            'sslmode': 'require',
+            'sslrootcert': CA_PEM_PATH
         }
 
-        # Add SSL options if certificate is provided
-        if CA_PEM_PATH:
-            db_config['OPTIONS'] = {
-                'sslmode': 'require',
-                'sslrootcert': CA_PEM_PATH
-            }
+    DATABASES = {'default': db_config}
 
-        DATABASES = {'default': db_config}
-    else:
-        # Local: Use DATABASES from config.yaml
-        DATABASES = config.get('DATABASES')
-        if DATABASES and 'default' in DATABASES:
-            opts = DATABASES['default'].get('OPTIONS', {})
-            if 'sslrootcert' in opts:
-                cert_path = opts['sslrootcert']
-                opts['sslrootcert'] = str(BASE_DIR / cert_path)
+else:
+    # --- Local Development ---
+    import yaml
+    CONFIG_FILE = BASE_DIR / 'config.yaml'
+    if not CONFIG_FILE.exists():
+        raise FileNotFoundError(
+            'config.yaml not found. Please create it from config_template.yaml'
+        )
+
+    with open(CONFIG_FILE, 'r') as f:
+        config = yaml.safe_load(f)
+
+    SECRET_KEY = config.get('SECRET_KEY')
+    DBT_KEY = config.get('DBT_KEY')
+    ESV_KEY = config.get('ESV_KEY')
+    DEBUG = config.get('DEBUG', True)
+    DATABASES = config.get('DATABASES')
+
+    if DATABASES and 'default' in DATABASES:
+        opts = DATABASES['default'].get('OPTIONS', {})
+        if 'sslrootcert' in opts:
+            cert_path = opts['sslrootcert']
+            opts['sslrootcert'] = str(BASE_DIR / cert_path)
+
+# Ensure DBT_KEY is available as an environment variable if it exists
+if DBT_KEY:
+    os.environ['DBT_KEY'] = DBT_KEY
 
 
 # Password validation
