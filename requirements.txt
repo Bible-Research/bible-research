@@ -1,11 +1,14 @@
 Django==4.2.6
 PyYAML
+dj-database-url
 django-cors-headers
 djangorestframework
 drf-spectacular
 requests
 pycountry
 psycopg2-binary==2.9.9
+gunicorn
+google-cloud-secret-manager
 
 # Dependencies for DBT Client
 certifi >= 14.05.14
