@@ -286,8 +286,10 @@ def create_log_handler(
     handler_name, level, filename=None, max_bytes=10485760,
     backup_count=10
 ):
-    if DEBUG and filename:
-        # Create logs directory if it doesn't exist
+    # Only configure file logging for local development.
+    # GAE and Vercel have read-only filesystems.
+    is_local_dev = not IS_GCP_ENVIRONMENT and not IS_VERCEL
+    if DEBUG and filename and is_local_dev:
         logs_dir = os.path.join(BASE_DIR, 'logs')
         if not os.path.exists(logs_dir):
             os.makedirs(logs_dir)
