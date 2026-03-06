@@ -1,4 +1,5 @@
 import logging
+import time
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -24,6 +25,7 @@ class BiblePassageView(APIView):
     """
 
     def get(self, request, format=None):
+        start_time = time.time()
         passage = request.query_params.get('passage')
         response_format = request.query_params.get(
             'response_format', 'text'
@@ -108,13 +110,21 @@ class BiblePassageView(APIView):
             }
             logger.debug(f"Prepared data for serializer: {data}")
 
+            serializer_start = time.time()
             serializer = BiblePassageSerializer(data=data)
             if serializer.is_valid():
                 logger.info(
                     f"Successfully retrieved passage: "
                     f"{book_name} {chapter} ({fileset_id})"
                 )
-                return Response(serializer.to_representation(data))
+                response = Response(serializer.to_representation(data))
+                serializer_end = time.time()
+                total_time = time.time() - start_time
+                logger.info(
+                    f"API call timing - Total: {total_time:.3f}s, "
+                    f"Serializer: {serializer_end - serializer_start:.3f}s"
+                )
+                return response
 
             logger.error(
                 f"Serializer validation failed: {serializer.errors}"

@@ -1,4 +1,5 @@
 import logging
+import time
 from rest_framework import serializers
 from bible.services.dbt.client import DBTClient
 
@@ -26,6 +27,7 @@ class BiblePassageSerializer(serializers.Serializer):
     )
 
     def to_representation(self, instance):
+        start_time = time.time()
         dbt_client = DBTClient()
         book_id = instance.get('book')
         book_name = instance.get('book_name', '')
@@ -33,11 +35,14 @@ class BiblePassageSerializer(serializers.Serializer):
         fileset_id = instance.get('fileset_id')
 
         try:
+            dbt_start = time.time()
             passage_data = dbt_client.get_verses(
               book_id,
               chapter,
               bible_id=fileset_id
             )
+            dbt_end = time.time()
+            logger.info(f"DBT call time: {dbt_end - dbt_start:.3f}s")
 
             audio_format = 'path' in passage_data['data'][0]
 
@@ -68,6 +73,8 @@ class BiblePassageSerializer(serializers.Serializer):
                     ]
                 }
 
+            end_time = time.time()
+            logger.info(f"Serializer to_representation time: {end_time - start_time:.3f}s")
             return response_data
 
         except Exception as e:
