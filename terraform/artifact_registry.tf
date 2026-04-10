@@ -18,6 +18,8 @@ resource "google_secret_manager_secret_version" "dockerhub_token" {
 }
 
 resource "google_secret_manager_secret_iam_member" "artifact_registry_dockerhub" {
+  count = var.dockerhub_upstream_auth ? 1 : 0
+
   secret_id = google_secret_manager_secret.dockerhub_token.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-artifactregistry.iam.gserviceaccount.com"
@@ -35,10 +37,13 @@ resource "google_artifact_registry_repository" "dockerhub_proxy" {
     docker_repository {
       public_repository = "DOCKER_HUB"
     }
-    upstream_credentials {
-      username_password_credentials {
-        username                = var.dockerhub_username
-        password_secret_version = google_secret_manager_secret_version.dockerhub_token.name
+    dynamic "upstream_credentials" {
+      for_each = var.dockerhub_upstream_auth ? [1] : []
+      content {
+        username_password_credentials {
+          username                = var.dockerhub_username
+          password_secret_version = google_secret_manager_secret_version.dockerhub_token.name
+        }
       }
     }
   }
