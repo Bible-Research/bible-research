@@ -1,8 +1,7 @@
-name: Deploy Django to App Engine
+name: Build and Deploy to Cloud Run
 on:
   push:
-    branches:
-      - main  # This triggers the deploy whenever you push to the main branch
+    branches: [main]
 
 jobs:
   deploy:
@@ -11,14 +10,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "${DOCKERHUB_USERNAME}/bible-research:${IMAGE_TAG}" .
+          docker push "${DOCKERHUB_USERNAME}/bible-research:${IMAGE_TAG}"
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Deploy to App Engine
-        uses: google-github-actions/deploy-appengine@v2
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          # This points to your app.yaml location
-          working_directory: .
+          terraform_wrapper: false
+
+      - name: Terraform init and apply
+        working-directory: terraform
+        env:
+          TF_VAR_dockerhub_token: ${{ secrets.TF_VAR_dockerhub_token }}
+          TF_VAR_image_tag: ${{ github.sha }}
+          # Use Docker Hub image via Artifact Registry proxy (not the gcr.io bootstrap placeholder).
+          TF_VAR_container_image: ""
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false

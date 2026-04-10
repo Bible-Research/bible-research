@@ -13,3 +13,8 @@ db_backups/*
 db.sqlite3
 
 plan.md
+
+terraform/*.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate*
