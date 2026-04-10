@@ -39,6 +39,8 @@ jobs:
         env:
           TF_VAR_dockerhub_token: ${{ secrets.TF_VAR_dockerhub_token }}
           TF_VAR_image_tag: ${{ github.sha }}
+          # Use Docker Hub image via Artifact Registry proxy (not the gcr.io bootstrap placeholder).
+          TF_VAR_container_image: ""
         run: |
           terraform init -input=false
           terraform apply -auto-approve -input=false
