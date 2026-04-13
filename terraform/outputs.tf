@@ -1,8 +1,3 @@
-output "cloud_run_url" {
-  description = "HTTPS URL of the Cloud Run service"
-  value       = google_cloud_run_v2_service.bible_research.uri
-}
-
 output "cicd_sa_email" {
   description = "CI/CD service account email for GitHub Actions"
   value       = google_service_account.cicd.email
