@@ -10,6 +10,15 @@ class DeviceAndCountryMiddleware:
     and country information from Cloudflare headers or IP address.
     """
 
+    # Paths that must remain truly anonymous when no credentials are sent.
+    # Auto-authentication would silently create phantom users and hide the
+    # real DRF permission result for shared public-read endpoints.
+    PUBLIC_READ_PREFIXES = (
+        '/api/v1/bible',
+        '/api/v1/notes',
+        '/api/v1/tags',
+    )
+
     def __init__(self, get_response):
         self.get_response = get_response
 
@@ -19,11 +28,18 @@ class DeviceAndCountryMiddleware:
         self.primary_language(request)
 
         path = request.path
-        auto_authentication = not request.user.is_authenticated \
-            or not (path.startswith('/admin')
-                    or path.startswith('/api/v1/bible'))
+        method = request.method
+        is_public_read = (
+            method in ('GET', 'HEAD', 'OPTIONS')
+            and any(path.startswith(p) for p in self.PUBLIC_READ_PREFIXES)
+        )
+        should_auto_authenticate = (
+            not request.user.is_authenticated
+            and not path.startswith('/admin')
+            and not is_public_read
+        )
 
-        if auto_authentication:
+        if should_auto_authenticate:
             self.auto_authenticate(request)
 
         print(f"User: {request.user}")
