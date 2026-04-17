@@ -1,6 +1,6 @@
 import logging
 
-from rest_framework import viewsets
+from rest_framework import permissions, viewsets
 from django.contrib.auth import get_user_model
 from django.db import models
 
@@ -18,9 +18,16 @@ class TagViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows tags to be created, viewed, updated, or deleted.
 
-    Users can only see and manage their own tags.
+    - `retrieve` is public for any tag that has at least one public note,
+      so share pages can resolve tag names.
+    - `list` and all write actions are restricted to the owning user.
     """
     serializer_class = TagSerializer
+
+    def get_permissions(self):
+        if self.action == 'retrieve':
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         """
@@ -134,9 +141,17 @@ class NoteViewSet(viewsets.ModelViewSet):
     Additional filtering:
     - GET /api/v1/notes/?tag_id={tag_id} - List notes filtered by tag ID
     - GET /api/v1/notes/?public=true - List both public and private notes
+
+    Permissions:
+    - `list` and `retrieve` are public (filtered to public-only for anonymous).
+    - All write actions require authentication.
     """
     serializer_class = NoteSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
         """
