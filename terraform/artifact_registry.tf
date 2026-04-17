@@ -48,6 +48,22 @@ resource "google_artifact_registry_repository" "dockerhub_proxy" {
     }
   }
 
+  cleanup_policy {
+    id     = "keep-latest-3"
+    action = "KEEP"
+    condition {
+      most_recent_versions = 3
+    }
+  }
+
+  cleanup_policy {
+    id     = "delete-untagged"
+    action = "DELETE"
+    condition {
+      tag_state = "UNTAGGED"
+    }
+  }
+
   depends_on = [
     google_project_service.enabled,
     google_secret_manager_secret_version.dockerhub_token,
