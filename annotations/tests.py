@@ -232,6 +232,23 @@ class PublicNoteSharingTests(TestCase):
         resp = self.anon.get(url)
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_owner_can_retrieve_own_private_only_tag(self):
+        private_only = Tag.objects.create(
+            user=self.owner, name='PrivateOnly'
+        )
+        Note.objects.create(
+            user=self.owner, tag=private_only,
+            note_text='private', public=False,
+        )
+        url = reverse('tag-detail', args=[private_only.id])
+        resp = self.owner_client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['name'], 'PrivateOnly')
+
+        # But another authenticated user still cannot retrieve it.
+        other_resp = self.other_client.get(url)
+        self.assertEqual(other_resp.status_code, status.HTTP_404_NOT_FOUND)
+
     def test_anonymous_tag_list_requires_auth(self):
         url = reverse('tag-list')
         resp = self.anon.get(url)

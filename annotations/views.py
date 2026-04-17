@@ -33,15 +33,23 @@ class TagViewSet(viewsets.ModelViewSet):
         """
         Returns the queryset of tags the caller may see.
 
-        - `retrieve`: any tag that has at least one public note. This
-          lets share pages resolve a tag's name without owning it.
+        - `retrieve`:
+            * authenticated: own tags ∪ tags with at least one public note
+              (so the owner can always resolve their own tags, even
+              private-only ones, and still follow shared links);
+            * anonymous: tags with at least one public note.
         - `list` (and writes, which require auth): the caller's own tags.
         - Anonymous callers get an empty list for `list`.
         """
         user = self.request.user
 
         if self.action == 'retrieve':
-            return Tag.objects.filter(notes__public=True).distinct()
+            public_qs = Tag.objects.filter(notes__public=True)
+            if user.is_authenticated:
+                return (
+                    public_qs | Tag.objects.filter(user=user)
+                ).distinct()
+            return public_qs.distinct()
 
         if user.is_authenticated:
             return Tag.objects.filter(user=user).order_by('name')
