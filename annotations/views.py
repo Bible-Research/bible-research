@@ -31,45 +31,22 @@ class TagViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Returns the queryset of tags that the current user
-        has access to.
-        Authenticated users see their own tags.
-        Unauthenticated users see the guest user's tags.
+        Returns the queryset of tags the caller may see.
+
+        - `retrieve`: any tag that has at least one public note. This
+          lets share pages resolve a tag's name without owning it.
+        - `list` (and writes, which require auth): the caller's own tags.
+        - Anonymous callers get an empty list for `list`.
         """
         user = self.request.user
-        logger.info(
-            f"TagViewSet.get_queryset called for user: "
-            f"{user.username if user.is_authenticated else 'Anonymous'}"
-        )
 
-        # For authenticated users, return their own tags
+        if self.action == 'retrieve':
+            return Tag.objects.filter(notes__public=True).distinct()
+
         if user.is_authenticated:
-            queryset = Tag.objects.filter(
-                user=user
-            ).order_by('name')
-            logger.debug(
-                f"Returning {queryset.count()} tags "
-                f"for user {user.username}"
-            )
-            return queryset
+            return Tag.objects.filter(user=user).order_by('name')
 
-        # For unauthenticated users, return guest user's tags
-        try:
-            guest_user = User.objects.get(username='guest')
-            queryset = Tag.objects.filter(
-                user=guest_user
-            ).order_by('name')
-            logger.debug(
-                f"Returning {queryset.count()} tags "
-                f"for guest user"
-            )
-            return queryset
-        except User.DoesNotExist:
-            logger.warning(
-                "Guest user does not exist, "
-                "returning empty queryset"
-            )
-            return Tag.objects.none()
+        return Tag.objects.none()
 
     def perform_create(self, serializer):
         """
