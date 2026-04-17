@@ -10,13 +10,19 @@ class DeviceAndCountryMiddleware:
     and country information from Cloudflare headers or IP address.
     """
 
-    # Paths that must remain truly anonymous when no credentials are sent.
-    # Auto-authentication would silently create phantom users and hide the
-    # real DRF permission result for shared public-read endpoints.
-    PUBLIC_READ_PREFIXES = (
-        '/api/v1/bible',
+    # Paths that manage their own permissions via DRF and should never be
+    # auto-authenticated. Auto-authentication would silently create phantom
+    # users, hide DRF permission results on public reads, and let anonymous
+    # writes succeed under a device-derived username.
+    PERMISSION_MANAGED_PREFIXES = (
         '/api/v1/notes',
         '/api/v1/tags',
+    )
+
+    # Public read-only prefixes that don't need a user but also don't need
+    # DRF permission handling (bible content).
+    PUBLIC_READ_PREFIXES = (
+        '/api/v1/bible',
     )
 
     def __init__(self, get_response):
@@ -29,6 +35,9 @@ class DeviceAndCountryMiddleware:
 
         path = request.path
         method = request.method
+        is_permission_managed = any(
+            path.startswith(p) for p in self.PERMISSION_MANAGED_PREFIXES
+        )
         is_public_read = (
             method in ('GET', 'HEAD', 'OPTIONS')
             and any(path.startswith(p) for p in self.PUBLIC_READ_PREFIXES)
@@ -36,6 +45,7 @@ class DeviceAndCountryMiddleware:
         should_auto_authenticate = (
             not request.user.is_authenticated
             and not path.startswith('/admin')
+            and not is_permission_managed
             and not is_public_read
         )
 
