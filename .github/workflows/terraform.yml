@@ -20,6 +20,11 @@ env:
   WIF_PROVIDER: projects/670506724494/locations/global/workloadIdentityPools/github-actions/providers/github
   DEPLOY_SA: github-deployer@bible-research-489314.iam.gserviceaccount.com
 
+# One Terraform job at a time so parallel runs do not fight over the GCS state lock.
+concurrency:
+  group: terraform-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
@@ -53,14 +58,14 @@ jobs:
 
       - name: Terraform plan (manual)
         if: github.event_name == 'workflow_dispatch'
-        run: terraform plan -input=false -no-color
+        run: terraform plan -input=false -no-color -lock-timeout=15m
 
       - name: Terraform plan (PR)
         id: tfplan
         if: github.event_name == 'pull_request'
         run: |
           set -o pipefail
-          terraform plan -input=false -no-color 2>&1 | tee plan.txt
+          terraform plan -input=false -no-color -lock-timeout=15m 2>&1 | tee plan.txt
 
       - name: Comment plan on PR
         if: github.event_name == 'pull_request' && success()
@@ -78,4 +83,4 @@ jobs:
 
       - name: Terraform apply (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve -input=false
+        run: terraform apply -auto-approve -input=false -lock-timeout=15m
