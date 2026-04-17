@@ -114,6 +114,7 @@ class NoteSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(
         default=CurrentAuthenticatedUserDefault()
     )
+    is_owner = serializers.SerializerMethodField(read_only=True)
     verse_references = NoteVerseReferenceSerializer(
         many=True,
         write_only=True,
@@ -123,6 +124,18 @@ class NoteSerializer(serializers.ModelSerializer):
             "to link to the note."
         )
     )
+
+    def get_is_owner(self, obj):
+        """True when the requesting user owns this note. Used by
+        clients to gate edit/delete controls on shared notes without
+        exposing the owner's username.
+        """
+        request = self.context.get('request')
+        return bool(
+            request
+            and request.user.is_authenticated
+            and obj.user_id == request.user.id
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -145,7 +158,7 @@ class NoteSerializer(serializers.ModelSerializer):
         model = Note
         fields = [
             'id', 'user', 'note_text', 'public', 'created_at', 'updated_at',
-            'tag', 'verse_references'
+            'tag', 'verse_references', 'is_owner'
         ]
 
     def create(self, validated_data):
