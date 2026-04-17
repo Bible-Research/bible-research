@@ -27,7 +27,7 @@ _BIBLE_BOOKS = [
     # New Testament
     ('matthew', 'MAT', 'NT'), ('mark', 'MRK', 'NT'),
     ('luke', 'LUK', 'NT'), ('john', 'JHN', 'NT'),
-    ('acts of the apostles', 'ACT', 'NT'), ('romans', 'ROM', 'NT'),
+    ('acts', 'ACT', 'NT'), ('romans', 'ROM', 'NT'),
     ('1 corinthians', '1CO', 'NT'), ('2 corinthians', '2CO', 'NT'),
     ('galatians', 'GAL', 'NT'), ('ephesians', 'EPH', 'NT'),
     ('philippians', 'PHP', 'NT'), ('colossians', 'COL', 'NT'),
