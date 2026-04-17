@@ -242,91 +242,50 @@ class NoteViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Returns the queryset of notes that the current user
-        has access to.
-        - Authenticated users see their own private notes
-          by default
-        - Unauthenticated users see only public notes
+        Returns the queryset of notes the current caller may see.
 
-        Available query parameters:
-        - GET /api/v1/notes/ - List user's own notes
-        - GET /api/v1/notes/?public=true - List public notes
-          and user's notes
-        - GET /api/v1/notes/<pk>/ - Retrieve a specific note
-          by its ID
-        - GET /api/v1/notes/?tag_id=<tag_id> - Filter by
-          tag ID
-
-        Special cases:
-        - When requesting a specific note by ID:
-          Users see the note if it's public or their own
-        - When filtering by tag_id:
-          Users see all public notes with that tag and
-          their own notes
+        Rules:
+        - Anonymous callers see notes where `public=True`, restricted by
+          `tag_id`/`pk` if given.
+        - Authenticated callers always see their own notes; when the
+          request is a share view (by `tag_id` or `pk`) or opts into
+          `?public=true`, they also see every other `public=True` note
+          matching the filter.
+        - Plain `GET /api/v1/notes/` only returns the caller's own notes
+          (empty for anonymous).
         """
         user = self.request.user
         note_pk = self.kwargs.get('pk', None)
         tag_id = self.request.query_params.get('tag_id', None)
+        public_param = self.request.query_params.get(
+            'public', ''
+        ).lower() == 'true'
+        is_share_view = bool(note_pk or tag_id)
 
         logger.info(
-            f"NoteViewSet.get_queryset called for user: "
-            f"{user.username if user.is_authenticated else 'Anonymous'} "
-            f"| note_pk: {note_pk} | tag_id: {tag_id}"
+            "NoteViewSet.get_queryset | user=%s | note_pk=%s | tag_id=%s"
+            " | public_param=%s | is_share_view=%s",
+            user.username if user.is_authenticated else 'Anonymous',
+            note_pk, tag_id, public_param, is_share_view,
         )
 
-        if note_pk or tag_id:
-            # If specific note or tag is requested,
-            # search it in public notes
-            public = True
-            logger.debug(
-                "Setting public=True due to note_pk "
-                "or tag_id filter"
-            )
-        else:
-            # Otherwise evaluate if user requested public notes
-            public_param = self.request.query_params.get(
-                'public',
-                ''
-            ).lower()
-            public = public_param == 'true'
-            logger.debug(
-                f"Public parameter: {public_param}, "
-                f"public={public}"
-            )
-
         if user.is_authenticated:
-            user_notes = models.Q(user=user)
-            if public:
-                queryset = Note.objects.filter(
-                    user_notes | models.Q(public=True)
-                )
-                logger.debug(
-                    f"Authenticated user {user.username}: "
-                    f"Fetching own notes + public notes"
-                )
+            own = models.Q(user=user)
+            if is_share_view or public_param:
+                queryset = Note.objects.filter(own | models.Q(public=True))
             else:
-                queryset = Note.objects.filter(user_notes)
-                logger.debug(
-                    f"Authenticated user {user.username}: "
-                    f"Fetching only own notes"
-                )
+                queryset = Note.objects.filter(own)
         else:
-            queryset = Note.objects.filter(public=public)
-            logger.debug(
-                "Unauthenticated user: "
-                "Fetching public notes only"
-            )
+            queryset = Note.objects.filter(public=True)
 
         if tag_id:
             queryset = queryset.filter(tag_id=tag_id)
-            logger.debug(f"Filtering by tag_id: {tag_id}")
-
         if note_pk:
             queryset = queryset.filter(id=note_pk)
-            logger.debug(f"Filtering by note_pk: {note_pk}")
 
         final_queryset = queryset.order_by('-created_at')
         logger.info(
-            f"Returning {final_queryset.count()} notes"
+            "NoteViewSet.get_queryset returning %d notes",
+            final_queryset.count(),
         )
         return final_queryset
