@@ -1,71 +1,14 @@
-resource "google_secret_manager_secret" "dockerhub_token" {
-  secret_id = "dockerhub-token"
+# App Engine Standard created this repository; we track it to avoid drift.
+resource "google_artifact_registry_repository" "gae_standard" {
+  # App Engine Standard uses the regional repo in the app region (not var.region / tfvars).
+  location      = "europe-west3"
+  repository_id = "gae-standard"
+  description   = "Repository to store images related to App Engine Standard deployments."
+  format        = "DOCKER"
 
-  replication {
-    auto {}
+  lifecycle {
+    prevent_destroy = true
   }
 
   depends_on = [google_project_service.enabled]
-}
-
-resource "google_secret_manager_secret_version" "dockerhub_token" {
-  secret      = google_secret_manager_secret.dockerhub_token.id
-  secret_data = var.dockerhub_token
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
-resource "google_secret_manager_secret_iam_member" "artifact_registry_dockerhub" {
-  count = var.dockerhub_upstream_auth ? 1 : 0
-
-  secret_id = google_secret_manager_secret.dockerhub_token.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-artifactregistry.iam.gserviceaccount.com"
-}
-
-resource "google_artifact_registry_repository" "dockerhub_proxy" {
-  location      = var.region
-  repository_id = "dockerhub-proxy"
-  description   = "Remote repository proxying Docker Hub"
-  format        = "DOCKER"
-  mode          = "REMOTE_REPOSITORY"
-
-  remote_repository_config {
-    description = "Docker Hub"
-    docker_repository {
-      public_repository = "DOCKER_HUB"
-    }
-    dynamic "upstream_credentials" {
-      for_each = var.dockerhub_upstream_auth ? [1] : []
-      content {
-        username_password_credentials {
-          username                = var.dockerhub_username
-          password_secret_version = google_secret_manager_secret_version.dockerhub_token.name
-        }
-      }
-    }
-  }
-
-  cleanup_policy {
-    id     = "keep-latest-3"
-    action = "KEEP"
-    condition {
-      most_recent_versions = 3
-    }
-  }
-
-  cleanup_policy {
-    id     = "delete-untagged"
-    action = "DELETE"
-    condition {
-      tag_state = "UNTAGGED"
-    }
-  }
-
-  depends_on = [
-    google_project_service.enabled,
-    google_secret_manager_secret_version.dockerhub_token,
-  ]
 }

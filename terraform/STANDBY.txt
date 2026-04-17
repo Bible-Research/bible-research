@@ -1,6 +1,0 @@
-GCP Terraform Cloud Run config was removed in one commit to avoid ongoing GCP costs (after terraform destroy).
-
-Restore infrastructure:
-  git revert <commit-that-added-this-file>
-
-Keep terraform/terraform.tfvars locally (gitignored). Remote state may remain in gs://bible-research-tf-state until you delete that bucket.

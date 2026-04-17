@@ -7,7 +7,7 @@ drf-spectacular
 requests
 pycountry
 psycopg2-binary==2.9.9
-gunicorn
+gunicorn==23.0.0
 google-cloud-secret-manager
 
 # Dependencies for DBT Client

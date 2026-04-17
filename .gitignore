@@ -16,6 +16,6 @@ db.sqlite3
 plan.md
 
 terraform/*.tfvars
+terraform/terraform.tfvars
 terraform/.terraform/
-terraform/.terraform.lock.hcl
 terraform/terraform.tfstate*

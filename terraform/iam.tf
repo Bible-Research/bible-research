@@ -1,61 +1,120 @@
-resource "google_service_account" "cloud_run" {
-  account_id   = "cloud-run-sa"
-  display_name = "Cloud Run bible-research"
+locals {
+  appspot_email = "${var.project_id}@appspot.gserviceaccount.com"
+}
+
+resource "google_service_account" "github_deployer" {
+  account_id   = "github-deployer"
+  display_name = "github-deployer"
+  description  = "Account that manages deployments"
   project      = var.project_id
 
   depends_on = [google_project_service.enabled]
 }
 
-resource "google_service_account" "cicd" {
-  account_id   = "cicd-sa"
-  display_name = "GitHub Actions CI/CD"
-  project      = var.project_id
-
-  depends_on = [google_project_service.enabled]
-}
-
-resource "google_project_iam_member" "cloud_run_secret_accessor" {
+# Existing bindings (addresses must match remote state for zero-drift plan).
+resource "google_project_iam_member" "github_deployer_appengine_app_admin" {
   project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.cloud_run.email}"
+  role    = "roles/appengine.appAdmin"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
 }
 
-resource "google_project_iam_member" "cicd_run_admin" {
+resource "google_project_iam_member" "github_deployer_cloudbuild_editor" {
   project = var.project_id
-  role    = "roles/run.admin"
-  member  = "serviceAccount:${google_service_account.cicd.email}"
+  role    = "roles/cloudbuild.builds.editor"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
 }
 
-resource "google_project_iam_member" "cicd_artifact_registry_reader" {
+resource "google_project_iam_member" "github_deployer_sa_user" {
   project = var.project_id
-  role    = "roles/artifactregistry.reader"
-  member  = "serviceAccount:${google_service_account.cicd.email}"
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
 }
 
-resource "google_service_account_iam_member" "cicd_act_as_cloud_run" {
-  service_account_id = google_service_account.cloud_run.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${google_service_account.cicd.email}"
-}
-
-resource "google_project_iam_member" "cicd_storage_admin" {
+resource "google_project_iam_member" "github_deployer_storage_admin" {
   project = var.project_id
   role    = "roles/storage.admin"
-  member  = "serviceAccount:${google_service_account.cicd.email}"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
 }
 
-resource "google_project_iam_member" "cicd_secret_viewer" {
+resource "google_project_iam_member" "github_deployer_artifactregistry_writer" {
   project = var.project_id
-  role    = "roles/secretmanager.viewer"
-  member  = "serviceAccount:${google_service_account.cicd.email}"
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
 }
 
-resource "google_project_iam_member" "cicd_viewer" {
+resource "google_project_iam_member" "github_deployer_secret_accessor" {
   project = var.project_id
-  role    = "roles/viewer"
-  member  = "serviceAccount:${google_service_account.cicd.email}"
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
 }
 
-resource "google_service_account_key" "cicd" {
-  service_account_id = google_service_account.cicd.name
+resource "google_project_iam_member" "github_deployer_logging_viewer" {
+  project = var.project_id
+  role    = "roles/logging.viewer"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
+}
+
+resource "google_project_iam_member" "github_deployer_project_iam_admin" {
+  project = var.project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
+}
+
+resource "google_project_iam_member" "appspot_secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${local.appspot_email}"
+
+  depends_on = [google_project_service.enabled]
+}
+
+resource "google_service_account_iam_member" "github_deployer_act_as_runtime" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${local.appspot_email}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
 }

@@ -1,0 +1,6 @@
+project_id  = "bible-research-489314"
+region      = "europe-west3"
+github_repo = "Bible-Research/bible-research"
+
+# Remove legacy keys from any older local file (dockerhub_*, image_tag, TF_VAR_* secrets, etc.)
+# so Terraform does not warn about undeclared variables.

@@ -20,12 +20,18 @@ data "google_project" "project" {
 
 locals {
   apis = [
-    "run.googleapis.com",
+    "appengine.googleapis.com",
+    "appenginereporting.googleapis.com",
+    "appoptimize.googleapis.com",
     "artifactregistry.googleapis.com",
-    "secretmanager.googleapis.com",
+    "cloudbuild.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
+    "secretmanager.googleapis.com",
     "serviceusage.googleapis.com",
+    "storage.googleapis.com",
+    "logging.googleapis.com",
+    "monitoring.googleapis.com",
   ]
 }
 

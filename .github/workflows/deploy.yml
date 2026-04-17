@@ -1,47 +1,63 @@
-name: Build and Deploy to Cloud Run
+name: Deploy to App Engine
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: bible-research-489314
+  WIF_PROVIDER: projects/670506724494/locations/global/workloadIdentityPools/github-actions/providers/github
+  DEPLOY_SA: github-deployer@bible-research-489314.iam.gserviceaccount.com
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-      - name: Build and push Docker image
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t "${DOCKERHUB_USERNAME}/bible-research:${IMAGE_TAG}" .
-          docker push "${DOCKERHUB_USERNAME}/bible-research:${IMAGE_TAG}"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
         with:
-          terraform_wrapper: false
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Terraform init and apply
-        working-directory: terraform
+      - name: Run database migrations
         env:
-          TF_VAR_dockerhub_token: ${{ secrets.TF_VAR_dockerhub_token }}
-          TF_VAR_image_tag: ${{ github.sha }}
-          # Use Docker Hub image via Artifact Registry proxy (not the gcr.io bootstrap placeholder).
-          TF_VAR_container_image: ""
+          GOOGLE_CLOUD_PROJECT: ${{ env.GCP_PROJECT_ID }}
+          GAE_APPLICATION: s~${{ env.GCP_PROJECT_ID }}
+        run: python manage.py migrate --noinput
+
+      - name: Deploy to App Engine
         run: |
-          terraform init -input=false
-          terraform apply -auto-approve -input=false
+          gcloud app deploy app.yaml \
+            --project="${GCP_PROJECT_ID}" \
+            --quiet --promote --stop-previous-version
+
+      - name: Recent serving versions
+        run: |
+          gcloud app versions list \
+            --project="${GCP_PROJECT_ID}" \
+            --hide-no-traffic \
+            --sort-by=~last_deployed_time \
+            --limit=5
