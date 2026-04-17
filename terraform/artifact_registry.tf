@@ -6,6 +6,23 @@ resource "google_artifact_registry_repository" "gae_standard" {
   description   = "Repository to store images related to App Engine Standard deployments."
   format        = "DOCKER"
 
+  # Retain the six newest image versions; remove untagged artifacts.
+  cleanup_policies {
+    id     = "keep-latest-6"
+    action = "KEEP"
+    most_recent_versions {
+      keep_count = 6
+    }
+  }
+
+  cleanup_policies {
+    id     = "delete-untagged"
+    action = "DELETE"
+    condition {
+      tag_state = "UNTAGGED"
+    }
+  }
+
   lifecycle {
     prevent_destroy = true
   }
