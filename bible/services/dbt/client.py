@@ -17,6 +17,7 @@ sys.path.append(client_path)
 from openapi_client.api.bibles_api import BiblesApi
 from openapi_client.api.search_api import SearchApi
 from openapi_client.api.annotations_api import AnnotationsApi
+from openapi_client.api.audio_timing_api import AudioTimingApi
 from openapi_client.configuration import Configuration
 from openapi_client.api_client import ApiClient
 from openapi_client.exceptions import ApiException
@@ -49,12 +50,14 @@ class DBTClient:
             host=self.base_url,
             api_key={'key': api_key}
         )
+        config.verify_ssl = False
 
         self.api_client = ApiClient(config)
 
         self.bibles_api = BiblesApi(self.api_client)
         self.search_api = SearchApi(self.api_client)
         self.annotations_api = AnnotationsApi(self.api_client)
+        self.audio_timing_api = AudioTimingApi(self.api_client)
 
     def _make_request(self, request_func, *args, **kwargs):
         """
@@ -226,6 +229,46 @@ class DBTClient:
                 chapter,
                 **kwargs
             )
+
+    def get_timestamps(
+        self,
+        fileset_id: str,
+        book: str,
+        chapter: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get audio timestamps for a chapter.
+
+        Uses requests directly instead of the generated
+        API client to avoid a deserialization bug in the
+        V4AudioTimestampsData model (missing BookId type).
+
+        Args:
+            fileset_id: Audio fileset ID
+            book: Book ID (e.g. 'JHN')
+            chapter: Chapter number
+            **kwargs: Additional query parameters
+
+        Returns:
+            Dictionary with timestamp data
+        """
+        params = kwargs.copy()
+        params['v'] = 4
+        params['key'] = self.api_key
+
+        url = (
+            f"{self.base_url}/timestamps/"
+            f"{fileset_id}/{book}/{chapter}"
+        )
+
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"DBT timestamps request error: {e}")
+            raise
 
     def search(self, bible_id: str, query: str, **kwargs) -> Dict[str, Any]:
         """

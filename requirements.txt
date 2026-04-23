@@ -20,3 +20,5 @@ urllib3 >= 1.15.1
 
 # Development
 debugpy
+pytest
+pytest-django
