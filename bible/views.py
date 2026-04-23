@@ -154,9 +154,18 @@ class AudioTimestampView(APIView):
             )
 
         try:
+            # Convert book name to DBT book ID
+            # (e.g. "John" -> "JHN")
+            book_id = get_dbt_book_id(book)
+            if not book_id:
+                return Response(
+                    {"error": f"Unknown book: {book}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             dbt_client = DBTClient()
             result = dbt_client.get_timestamps(
-                fileset_id, book, chapter
+                fileset_id, book_id, chapter
             )
             timestamps = [
                 {
