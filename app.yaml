@@ -1,5 +1,6 @@
 runtime: python312
 env: standard
+instance_class: F1
 
 # Always keep 1 instance running (min_instances=1)
 automatic_scaling:
