@@ -2,7 +2,7 @@
 
 import logging
 
-from .dbt.client import DBTClient
+from .dbt.client import get_default_dbt_client
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class TranslationService:
             list: A list of translations without video and audio stream.
         """
         logger.info("Fetching live translations for language_iso: %s", language_iso)
-        client = DBTClient()
+        client = get_default_dbt_client()
         params = {'limit': 500}
         if language_iso:
             params['language_code'] = language_iso.upper()

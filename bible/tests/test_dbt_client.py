@@ -1,18 +1,19 @@
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from bible.services.dbt.client import DBTClient
 
 
 @pytest.fixture
 def dbt_client():
-    """Fixture to provide a DBTClient instance."""
-    return DBTClient()
+    """Fixture to provide a DBTClient with a mocked HTTP session."""
+    client = DBTClient()
+    client.session = Mock()
+    return client
 
 
-@patch('bible.services.dbt.client.requests.get')
-def test_get_timestamps_calls_api(mock_get, dbt_client):
+def test_get_timestamps_calls_api(dbt_client):
     """
-    Test that get_timestamps calls requests.get with the
+    Test that get_timestamps calls session.get with the
     correct URL and parameters.
     """
     mock_response = Mock()
@@ -23,7 +24,7 @@ def test_get_timestamps_calls_api(mock_get, dbt_client):
         ]
     }
     mock_response.raise_for_status = Mock()
-    mock_get.return_value = mock_response
+    dbt_client.session.get.return_value = mock_response
 
     fileset_id = "ENGESVN2DA"
     book = "JHN"
@@ -31,8 +32,8 @@ def test_get_timestamps_calls_api(mock_get, dbt_client):
 
     result = dbt_client.get_timestamps(fileset_id, book, chapter)
 
-    mock_get.assert_called_once()
-    call_args, call_kwargs = mock_get.call_args
+    dbt_client.session.get.assert_called_once()
+    call_args, call_kwargs = dbt_client.session.get.call_args
     assert 'v=4' in call_args[0] or call_kwargs.get(
         'params', {}
     ).get('v') == 4
@@ -44,18 +45,17 @@ def test_get_timestamps_calls_api(mock_get, dbt_client):
     }
 
 
-@patch('bible.services.dbt.client.requests.get')
-def test_get_timestamps_injects_version(mock_get, dbt_client):
+def test_get_timestamps_injects_version(dbt_client):
     """
     Test that get_timestamps passes v=4 as a query parameter.
     """
     mock_response = Mock()
     mock_response.json.return_value = {"data": []}
     mock_response.raise_for_status = Mock()
-    mock_get.return_value = mock_response
+    dbt_client.session.get.return_value = mock_response
 
     dbt_client.get_timestamps("fileset", "book", "chapter")
 
-    call_args, call_kwargs = mock_get.call_args
+    call_args, call_kwargs = dbt_client.session.get.call_args
     params = call_kwargs.get('params', {})
     assert params.get('v') == 4

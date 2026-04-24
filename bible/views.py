@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from bible.utils.bible_books import get_dbt_book_id
 from .serializers import BiblePassageSerializer
 from .services.translation_service import TranslationService
-from .services.dbt.client import DBTClient
+from .services.dbt.client import get_default_dbt_client
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ class AudioTimestampView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            dbt_client = DBTClient()
+            dbt_client = get_default_dbt_client()
             result = dbt_client.get_timestamps(
                 fileset_id, book_id, chapter
             )

@@ -1,6 +1,6 @@
 import logging
 from rest_framework import serializers
-from bible.services.dbt.client import DBTClient
+from bible.services.dbt.client import get_default_dbt_client
 
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class BiblePassageSerializer(serializers.Serializer):
     )
 
     def to_representation(self, instance):
-        dbt_client = DBTClient()
+        dbt_client = get_default_dbt_client()
         book_id = instance.get('book')
         book_name = instance.get('book_name', '')
         chapter = str(instance.get('chapter'))

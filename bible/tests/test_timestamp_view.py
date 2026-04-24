@@ -12,14 +12,14 @@ def factory():
 
 
 @pytest.mark.django_db
-@patch('bible.views.DBTClient')
+@patch('bible.views.get_default_dbt_client')
 @patch('bible.views.get_dbt_book_id')
 def test_get_timestamps_success(
-    mock_get_dbt_book_id, MockDBTClient, factory
+    mock_get_dbt_book_id, mock_get_client, factory
 ):
     """Test successful retrieval of timestamps."""
     mock_get_dbt_book_id.return_value = 'JHN'
-    mock_dbt_instance = MockDBTClient.return_value
+    mock_dbt_instance = mock_get_client.return_value
     mock_dbt_instance.get_timestamps.return_value = {
         "data": [
             {"verse_start": 1, "timestamp": 0.0},
@@ -58,14 +58,14 @@ def test_get_timestamps_missing_params(factory):
 
 
 @pytest.mark.django_db
-@patch('bible.views.DBTClient')
+@patch('bible.views.get_default_dbt_client')
 @patch('bible.views.get_dbt_book_id')
 def test_get_timestamps_dbt_exception(
-    mock_get_dbt_book_id, MockDBTClient, factory
+    mock_get_dbt_book_id, mock_get_client, factory
 ):
     """Test handling of an exception from the DBT client."""
     mock_get_dbt_book_id.return_value = 'JHN'
-    mock_dbt_instance = MockDBTClient.return_value
+    mock_dbt_instance = mock_get_client.return_value
     mock_dbt_instance.get_timestamps.side_effect = Exception(
         "DBT Error"
     )

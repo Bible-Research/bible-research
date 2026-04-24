@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from bible.models import Verse
-from bible.services.dbt.client import DBTClient
+from bible.services.dbt.client import get_default_dbt_client
 from .models import Note, NoteVerse, Tag
 User = get_user_model()
 
@@ -219,7 +219,7 @@ class NoteSerializer(serializers.ModelSerializer):
             "verse_start": first_verse_num,
             "verse_end": last_verse_num
         }
-        dbt_client = DBTClient()
+        dbt_client = get_default_dbt_client()
         verse_text = dbt_client.get_verses(dbt_book_id, chapter, **kwargs)
         verses_with_text = []
 
