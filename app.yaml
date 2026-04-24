@@ -1,10 +1,10 @@
 runtime: python312
 env: standard
 
-# This keeps you on the Free Tier by limiting to 1 instance
+# Always keep 1 instance running (min_instances=1)
 automatic_scaling:
   max_instances: 1
-  min_instances: 0
+  min_instances: 1
 
 # This points to your Django project's WSGI file
 entrypoint: gunicorn -b :$PORT bible_research.wsgi
