@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from bible.utils.bible_books import get_dbt_book_id
 from .serializers import BiblePassageSerializer
 from .services.translation_service import TranslationService
+from .services.dbt.client import DBTClient
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,60 @@ class BiblePassageView(APIView):
         except Exception as e:
             logger.exception(
                 f"Error processing Bible passage request: {passage} - {e}"
+            )
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class AudioTimestampView(APIView):
+    """Return audio timestamps for a chapter."""
+
+    def get(self, request, format=None):
+        fileset_id = request.query_params.get('fileset_id')
+        book = request.query_params.get('book')
+        chapter = request.query_params.get('chapter')
+
+        if not all([fileset_id, book, chapter]):
+            return Response(
+                {
+                    "error":
+                    "fileset_id, book, and chapter "
+                    "are required."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Convert book name to DBT book ID
+            # (e.g. "John" -> "JHN")
+            book_id = get_dbt_book_id(book)
+            if not book_id:
+                return Response(
+                    {"error": f"Unknown book: {book}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            dbt_client = DBTClient()
+            result = dbt_client.get_timestamps(
+                fileset_id, book_id, chapter
+            )
+            timestamps = [
+                {
+                    "verse_start": item.get(
+                        "verse_start"
+                    ),
+                    "timestamp": item.get(
+                        "timestamp"
+                    ),
+                }
+                for item in result.get("data", [])
+            ]
+            return Response({"data": timestamps})
+        except Exception as e:
+            logger.exception(
+                "Error fetching timestamps: %s", e
             )
             return Response(
                 {"error": str(e)},
