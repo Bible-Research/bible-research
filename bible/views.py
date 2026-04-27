@@ -189,6 +189,48 @@ class AudioTimestampView(APIView):
             )
 
 
+class CopyrightView(APIView):
+    """Return copyright info for a Bible translation."""
+
+    def get(self, request, format=None):
+        bible_id = request.query_params.get('bible_id')
+
+        if not bible_id:
+            return Response(
+                {"error": "bible_id is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            dbt_client = get_default_dbt_client()
+            result = dbt_client.get_copyright(bible_id)
+
+            filesets = []
+            for item in (result or []):
+                cr = item.get("copyright") or {}
+                filesets.append({
+                    "id": item.get("id"),
+                    "type": item.get("type"),
+                    "size": item.get("size"),
+                    "copyright": cr.get("copyright", ""),
+                    "copyright_date": cr.get(
+                        "copyright_date", ""
+                    ),
+                    "copyright_description": cr.get(
+                        "copyright_description", ""
+                    ),
+                })
+            return Response({"data": filesets})
+        except Exception as e:
+            logger.exception(
+                "Error fetching copyright: %s", e
+            )
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
 class TranslationListView(APIView):
     """
     Lists available Bible translations by fetching live from DBT API.

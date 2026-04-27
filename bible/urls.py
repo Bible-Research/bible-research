@@ -13,4 +13,9 @@ urlpatterns = [
         views.AudioTimestampView.as_view(),
         name='audio-timestamps'
     ),
+    path(
+        'bible/copyright/',
+        views.CopyrightView.as_view(),
+        name='bible-copyright'
+    ),
 ]
