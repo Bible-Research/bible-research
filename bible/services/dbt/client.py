@@ -278,6 +278,18 @@ class DBTClient:
             logger.error(f"DBT timestamps request error: {e}")
             raise
 
+    def get_copyright(
+        self,
+        bible_id: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Get copyright info for a Bible."""
+        return self._make_request(
+            self.bibles_api.v4_bible_copyright,
+            bible_id,
+            **kwargs
+        )
+
     def search(self, bible_id: str, query: str, **kwargs) -> Dict[str, Any]:
         """
         Search for text in a specific Bible.

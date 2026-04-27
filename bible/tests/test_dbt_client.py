@@ -59,3 +59,21 @@ def test_get_timestamps_injects_version(dbt_client):
     call_args, call_kwargs = dbt_client.session.get.call_args
     params = call_kwargs.get('params', {})
     assert params.get('v') == 4
+
+
+def test_get_copyright_calls_api(dbt_client):
+    """
+    Test that get_copyright calls v4_bible_copyright
+    with correct args.
+    """
+    dbt_client.bibles_api.v4_bible_copyright = Mock(
+        return_value=[{"id": "ENGESV", "copyright": {}}]
+    )
+
+    result = dbt_client.get_copyright("ENGESV")
+
+    dbt_client.bibles_api.v4_bible_copyright \
+        .assert_called_once_with("ENGESV", v=4)
+    assert result == [
+        {"id": "ENGESV", "copyright": {}}
+    ]
