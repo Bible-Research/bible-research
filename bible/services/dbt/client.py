@@ -278,6 +278,43 @@ class DBTClient:
             logger.error(f"DBT timestamps request error: {e}")
             raise
 
+    def get_copyright(
+        self,
+        bible_id: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get copyright info for a Bible.
+
+        Uses requests directly instead of the generated
+        API client to avoid a deserialization bug
+        (missing Id model in openapi_client.models).
+
+        Args:
+            bible_id: Bible ID (e.g. 'ENGESV')
+            **kwargs: Additional query parameters
+
+        Returns:
+            List of fileset copyright objects
+        """
+        params = kwargs.copy()
+        params['v'] = 4
+        params['key'] = self.api_key
+
+        url = f"{self.base_url}/bibles/{bible_id}/copyright"
+
+        try:
+            response = self.session.get(
+                url, params=params
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(
+                f"DBT copyright request error: {e}"
+            )
+            raise
+
     def search(self, bible_id: str, query: str, **kwargs) -> Dict[str, Any]:
         """
         Search for text in a specific Bible.
