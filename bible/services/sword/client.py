@@ -8,7 +8,12 @@ from pysword.modules import SwordModules
 
 from bible.utils.bible_books import get_pysword_book_name
 
-from .registry import SWORD_MODULES_DIR, SWORD_TRANSLATIONS, get_sword_meta
+from .registry import (
+    SWORD_MODULES_DIR,
+    SWORD_TRANSLATIONS,
+    canonical_sword_fileset_id,
+    get_sword_meta,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,11 @@ class SwordClient:
         self._cache: Dict[str, tuple] = {}
 
     def _load(self, fileset_id: str):
+        canon = canonical_sword_fileset_id(fileset_id)
+        if canon is None:
+            raise ValueError(f"Unknown SWORD fileset_id: {fileset_id!r}")
+        fileset_id = canon
+
         if fileset_id in self._cache:
             return self._cache[fileset_id]
 
@@ -54,7 +64,10 @@ class SwordClient:
     ) -> List[Dict[str, Any]]:
         """Return [{verse_start, verse_text}, ...] for a chapter,
         matching the shape used by `BiblePassageSerializer`."""
-        _modules, bible = self._load(fileset_id)
+        canon = canonical_sword_fileset_id(fileset_id)
+        if canon is None:
+            raise ValueError(f"Unknown SWORD fileset: {fileset_id!r}")
+        _modules, bible = self._load(canon)
 
         pysword_book = get_pysword_book_name(book_id)
         if not pysword_book:

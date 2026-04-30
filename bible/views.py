@@ -19,11 +19,14 @@ class BiblePassageView(APIView):
     Query Parameters:
         - passage: Book and chapter (e.g., '2 Chronicles 14')
         - response_format: 'text' or 'audio' (default: 'text')
-        - fileset_id: The specific DBT fileset ID to use for fetching content.
+        - fileset_id: DBT fileset ID (e.g. ENGESV) or bundled SWORD id
+          (e.g. LVSGLU8). SWORD translations also accept listing ``abbr``
+          (e.g. GLU8 for Latvian Glück).
 
     Example:
         /api/v1/bible/?passage=John+3&fileset_id=ENGESV
         /api/v1/bible/?passage=John+3&fileset_id=LVSGLU8   # Latvian Glück
+        /api/v1/bible/?passage=Luke+20&fileset_id=GLU8      # same, via abbr
     """
 
     def get(self, request, format=None):

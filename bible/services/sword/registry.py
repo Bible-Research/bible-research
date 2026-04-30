@@ -21,9 +21,25 @@ SWORD_TRANSLATIONS = {
 }
 
 
+def canonical_sword_fileset_id(fileset_id: str) -> str | None:
+    """Return the registry key (e.g. LVSGLU8) for a fileset id or abbr (e.g. GLU8)."""
+    if not fileset_id:
+        return None
+    key = fileset_id.strip().upper()
+    if key in SWORD_TRANSLATIONS:
+        return key
+    for sfid, meta in SWORD_TRANSLATIONS.items():
+        if meta["abbr"].upper() == key:
+            return sfid
+    return None
+
+
 def is_sword_fileset(fileset_id: str) -> bool:
-    return fileset_id in SWORD_TRANSLATIONS
+    return canonical_sword_fileset_id(fileset_id) is not None
 
 
 def get_sword_meta(fileset_id: str) -> dict:
-    return SWORD_TRANSLATIONS[fileset_id]
+    canon = canonical_sword_fileset_id(fileset_id)
+    if canon is None:
+        raise KeyError(fileset_id)
+    return SWORD_TRANSLATIONS[canon]
