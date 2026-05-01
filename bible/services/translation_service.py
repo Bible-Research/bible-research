@@ -3,6 +3,7 @@
 import logging
 
 from .dbt.client import get_default_dbt_client
+from .sword.client import get_default_sword_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,18 +33,25 @@ class TranslationService:
 
         logger.debug("Requesting bibles with params: %s", params)
 
+        processed = []
         try:
             response = client.get_bibles(**params)
             translations = response.get('data', [])
             logger.info("Received %d translations from DBT API.", len(translations))
             logger.debug("Raw translations from API: %s", translations)
+            processed = cls._process_translations(translations)
         except Exception as e:
             logger.error(
                 "DBT API Error fetching translations: %s", e, exc_info=True
             )
-            return []
 
-        return cls._process_translations(translations)
+        sword_entries = get_default_sword_client().get_translation_listing()
+        if language_iso:
+            needle = language_iso.lower()
+            sword_entries = [
+                e for e in sword_entries if e['iso'].lower() == needle
+            ]
+        return processed + sword_entries
 
     @classmethod
     def _process_translations(cls, translations):
