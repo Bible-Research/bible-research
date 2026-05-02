@@ -53,7 +53,7 @@ resource "google_cloud_run_v2_job" "audio_generator" {
         }
         env {
           name  = "GOOGLE_TTS_VOICE_NAME"
-          value = "lv-LV-Standard-A"
+          value = "lv-LV-Chirp3-HD-Sadachbia"
         }
         env {
           name  = "GOOGLE_TTS_SAMPLE_RATE_HERTZ"

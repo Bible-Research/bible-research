@@ -119,7 +119,7 @@ if IS_GCP_ENVIRONMENT:
         "GOOGLE_TTS_LANGUAGE_CODE", "lv-LV"
     )
     GOOGLE_TTS_VOICE_NAME = os.environ.get(
-        "GOOGLE_TTS_VOICE_NAME", "lv-LV-Standard-A"
+        "GOOGLE_TTS_VOICE_NAME", "lv-LV-Chirp3-HD-Sadachbia"
     )
     GOOGLE_TTS_SAMPLE_RATE_HERTZ = int(
         os.environ.get("GOOGLE_TTS_SAMPLE_RATE_HERTZ", "24000")
@@ -192,7 +192,7 @@ elif IS_VERCEL:
         "GOOGLE_TTS_LANGUAGE_CODE", "lv-LV"
     )
     GOOGLE_TTS_VOICE_NAME = os.environ.get(
-        "GOOGLE_TTS_VOICE_NAME", "lv-LV-Standard-A"
+        "GOOGLE_TTS_VOICE_NAME", "lv-LV-Chirp3-HD-Sadachbia"
     )
     GOOGLE_TTS_SAMPLE_RATE_HERTZ = int(
         os.environ.get("GOOGLE_TTS_SAMPLE_RATE_HERTZ", "24000")
@@ -233,7 +233,7 @@ else:
         "GOOGLE_TTS_LANGUAGE_CODE", "lv-LV"
     )
     GOOGLE_TTS_VOICE_NAME = config.get(
-        "GOOGLE_TTS_VOICE_NAME", "lv-LV-Standard-A"
+        "GOOGLE_TTS_VOICE_NAME", "lv-LV-Chirp3-HD-Sadachbia"
     )
     GOOGLE_TTS_SAMPLE_RATE_HERTZ = int(
         config.get("GOOGLE_TTS_SAMPLE_RATE_HERTZ", 24000)
