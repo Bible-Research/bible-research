@@ -36,3 +36,19 @@ output "terraform_state_bucket" {
 output "secret_ids_observed" {
   value = sort(keys({ for k, v in data.google_secret_manager_secret.app : k => true }))
 }
+
+output "bible_audio_bucket" {
+  value = google_storage_bucket.bible_audio.name
+}
+
+output "audio_generator_sa_email" {
+  value = google_service_account.audio_generator.email
+}
+
+output "audio_generator_job_name" {
+  value = google_cloud_run_v2_job.audio_generator.name
+}
+
+output "audio_scheduler_job_name" {
+  value = google_cloud_scheduler_job.monthly_audio_generator.name
+}

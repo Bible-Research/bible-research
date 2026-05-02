@@ -118,3 +118,9 @@ resource "google_service_account_iam_member" "github_deployer_act_as_runtime" {
     google_service_account.github_deployer,
   ]
 }
+
+resource "google_service_account_iam_member" "appspot_self_token_creator" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${local.appspot_email}"
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${local.appspot_email}"
+}

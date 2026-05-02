@@ -32,6 +32,9 @@ locals {
     "storage.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
+    "run.googleapis.com",
+    "cloudscheduler.googleapis.com",
+    "texttospeech.googleapis.com",
   ]
 }
 
