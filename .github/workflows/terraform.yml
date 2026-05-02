@@ -5,7 +5,10 @@ on:
     paths:
       - "terraform/**"
   push:
-    branches: [main]
+    branches:
+      - main
+      # Temporary: apply Terraform from feature branch to create audio infra (remove after merge).
+      - feature/latvian-audio
     paths:
       - "terraform/**"
   workflow_dispatch:
@@ -81,6 +84,7 @@ jobs:
               body: '## Terraform plan\n\n```\n' + plan + '\n```',
             });
 
-      - name: Terraform apply (main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # Applies on main always; on feature/latvian-audio only until that branch is merged / removed below.
+      - name: Terraform apply (main or latvian-audio bootstrap)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/latvian-audio')
         run: terraform apply -auto-approve -input=false -lock-timeout=15m
