@@ -109,11 +109,10 @@ class SwordClient:
                 "name": meta["name"],
                 "language": meta["language"],
                 "iso": meta["language_iso"],
-                "filesets": [{
-                    "id": fid,
-                    "type": "text_plain",
-                    "size": "C",
-                }],
+                "filesets": [
+                    {"id": fid, "type": "text_plain", "size": "C"},
+                    {"id": fid, "type": "audio", "size": "C"},
+                ],
             })
         return out
 

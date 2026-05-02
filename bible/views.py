@@ -4,7 +4,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from bible.utils.bible_books import get_dbt_book_id
-from bible.services.sword.registry import is_sword_fileset
+from bible.services.sword.registry import (
+    canonical_sword_fileset_id,
+    is_sword_fileset,
+)
+from bible.services.storage import gcs
 from .serializers import BiblePassageSerializer
 from .services.translation_service import TranslationService
 from .services.dbt.client import get_default_dbt_client
@@ -26,7 +30,7 @@ class BiblePassageView(APIView):
     Example:
         /api/v1/bible/?passage=John+3&fileset_id=ENGESV
         /api/v1/bible/?passage=John+3&fileset_id=LVSGLU8   # Latvian Glück
-        /api/v1/bible/?passage=Luke+20&fileset_id=GLU8      # same, via abbr
+        /api/v1/bible/?passage=Luke+20&fileset_id=GLU8&response_format=audio  # Latvian audio
     """
 
     def get(self, request, format=None):
@@ -58,12 +62,6 @@ class BiblePassageView(APIView):
             return Response(
                 {"error": "Invalid format. Use 'text' or 'audio'"},
                 status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if response_format == 'audio' and is_sword_fileset(fileset_id):
-            return Response(
-                {"error": "Audio not available for this translation"},
-                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
@@ -173,6 +171,19 @@ class AudioTimestampView(APIView):
                     {"error": f"Unknown book: {book}"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+            if is_sword_fileset(fileset_id):
+                canon = canonical_sword_fileset_id(fileset_id)
+                try:
+                    payload = gcs.read_timestamps_json(
+                        canon, book_id, int(chapter)
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    return Response(
+                        {"error": f"Timestamps not available: {exc}"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                return Response({"data": payload.get("data", [])})
 
             dbt_client = get_default_dbt_client()
             result = dbt_client.get_timestamps(

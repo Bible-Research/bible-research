@@ -1,9 +1,14 @@
 import logging
+from django.conf import settings
 from rest_framework import serializers
 
 from bible.services.dbt.client import get_default_dbt_client
 from bible.services.sword.client import get_default_sword_client
-from bible.services.sword.registry import is_sword_fileset
+from bible.services.sword.registry import (
+    canonical_sword_fileset_id,
+    is_sword_fileset,
+)
+from bible.services.storage import gcs
 
 
 logger = logging.getLogger(__name__)
@@ -33,8 +38,46 @@ class BiblePassageSerializer(serializers.Serializer):
         book_name = instance.get('book_name', '')
         chapter = int(instance.get('chapter'))
         fileset_id = instance.get('fileset_id')
+        response_format = instance.get('format', 'text')
 
         try:
+            if is_sword_fileset(fileset_id) and response_format == 'audio':
+                canon = canonical_sword_fileset_id(fileset_id)
+                if not gcs.chapter_audio_exists(canon, book_id, chapter):
+                    return {
+                        'book': book_id,
+                        'book_name': book_name,
+                        'chapter': chapter,
+                        'format': 'audio',
+                        'audio_url': None,
+                        'message': (
+                            'Audio not yet generated for this chapter'
+                        ),
+                    }
+                audio_path, _ = gcs.chapter_object_paths(
+                    canon, book_id, chapter
+                )
+                blob = gcs.get_default_client().bucket(
+                    settings.AUDIO_BUCKET_NAME
+                ).get_blob(audio_path)
+                timestamps = gcs.read_timestamps_json(
+                    canon, book_id, chapter
+                )
+                return {
+                    'book': book_id,
+                    'book_name': book_name,
+                    'chapter': chapter,
+                    'format': 'audio',
+                    'audio_url': gcs.signed_audio_url(
+                        canon,
+                        book_id,
+                        chapter,
+                        settings.AUDIO_SIGNED_URL_TTL_SECONDS,
+                    ),
+                    'duration_seconds': timestamps.get('duration_seconds'),
+                    'file_size_bytes': blob.size if blob else None,
+                }
+
             if is_sword_fileset(fileset_id):
                 verses = get_default_sword_client().get_chapter_verses(
                     fileset_id, book_id, chapter
