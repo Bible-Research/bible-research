@@ -103,6 +103,30 @@ resource "google_project_iam_member" "github_deployer_service_usage_admin" {
   ]
 }
 
+# Terraform plan/apply refreshes service account IAM (e.g. appspot ↔ github-deployer).
+resource "google_project_iam_member" "github_deployer_service_account_admin" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountAdmin"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
+}
+
+# Terraform reads Workload Identity pools/providers (wif.tf) during refresh.
+resource "google_project_iam_member" "github_deployer_workload_identity_pool_admin" {
+  project = var.project_id
+  role    = "roles/iam.workloadIdentityPoolAdmin"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
+}
+
 resource "google_project_iam_member" "github_deployer_logging_viewer" {
   project = var.project_id
   role    = "roles/logging.viewer"
