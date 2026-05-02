@@ -10,6 +10,10 @@ pycountry
 psycopg2-binary==2.9.9
 gunicorn==23.0.0
 google-cloud-secret-manager
+google-cloud-texttospeech>=2.16,<3
+google-cloud-storage>=2.18,<3
+google-auth>=2.30,<3
+mutagen>=1.47,<2
 
 # Dependencies for DBT Client
 certifi >= 14.05.14
