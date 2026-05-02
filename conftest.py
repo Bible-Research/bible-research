@@ -5,6 +5,11 @@ def pytest_configure():
     if not settings.configured:
         settings.configure(
             DBT_KEY='test-key',
+            GOOGLE_TTS_LANGUAGE_CODE='lv-LV',
+            GOOGLE_TTS_VOICE_NAME='lv-LV-Standard-A',
+            GOOGLE_TTS_SAMPLE_RATE_HERTZ=24000,
+            AUDIO_BUCKET_NAME='test-audio-bucket',
+            AUDIO_SIGNED_URL_TTL_SECONDS=3600,
             # A minimal set of settings required for DRF and Django to run
             # tests
             INSTALLED_APPS=[

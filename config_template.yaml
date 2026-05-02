@@ -31,6 +31,13 @@ DEBUG: true
 # Your API key for the ESV Bible API.
 ESV_KEY: 'your_esv_api_key_goes_here'
 
+# Google Cloud TTS + audio bucket (public config, not secrets)
+GOOGLE_TTS_LANGUAGE_CODE: "lv-LV"
+GOOGLE_TTS_VOICE_NAME: "lv-LV-Standard-A"
+GOOGLE_TTS_SAMPLE_RATE_HERTZ: 24000
+AUDIO_BUCKET_NAME: "bible-research-489314-bible-audio"
+AUDIO_SIGNED_URL_TTL_SECONDS: 3600
+
 # IMPORTANT: You still need a SECRET_KEY for Django to run.
 # Generate a new one for your project from https://djecrety.ir/
 SECRET_KEY: 'paste_a_strong_randomly_generated_secret_key_here'
