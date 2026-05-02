@@ -10,6 +10,8 @@ def pytest_configure():
             GOOGLE_TTS_SAMPLE_RATE_HERTZ=24000,
             AUDIO_BUCKET_NAME='test-audio-bucket',
             AUDIO_SIGNED_URL_TTL_SECONDS=3600,
+            MONTHLY_TTS_CHAR_LIMIT=100000,
+            LOCK_STALE_HOURS=24,
             # A minimal set of settings required for DRF and Django to run
             # tests
             INSTALLED_APPS=[

@@ -31,7 +31,7 @@ resource "google_cloud_run_v2_job" "audio_generator" {
     template {
       service_account = google_service_account.audio_generator.email
       timeout         = "3600s"
-      max_retries     = 1
+      max_retries     = 0
 
       containers {
         # Reuse the App Engine container image. Pin to a tag your CI
@@ -66,6 +66,14 @@ resource "google_cloud_run_v2_job" "audio_generator" {
         env {
           name  = "AUDIO_SIGNED_URL_TTL_SECONDS"
           value = "3600"
+        }
+        env {
+          name  = "MONTHLY_TTS_CHAR_LIMIT"
+          value = "100000"
+        }
+        env {
+          name  = "LOCK_STALE_HOURS"
+          value = "24"
         }
         env {
           name  = "DJANGO_SETTINGS_MODULE"

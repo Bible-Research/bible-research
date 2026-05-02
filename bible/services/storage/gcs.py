@@ -10,11 +10,19 @@ from io import BytesIO
 from typing import Optional, Set, Tuple
 
 import google.auth
+from google.api_core import exceptions as _gax
 from google.auth.transport.requests import Request
 from google.cloud import storage
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+_GCS_UPLOAD_CONFLICT = (_gax.PreconditionFailed, _gax.Conflict)
+
+
+def _utc_naive_now() -> datetime.datetime:
+    """UTC 'now' as naive datetime (matches historical lock JSON timestamps)."""
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 _client: Optional[storage.Client] = None
 _client_lock = threading.Lock()
@@ -146,3 +154,165 @@ def signed_audio_url(
         service_account_email=credentials.service_account_email,
         access_token=credentials.token,
     )
+
+
+def get_current_year_month() -> str:
+    """Return ``YYYY-MM`` for the current UTC time."""
+    return _utc_naive_now().strftime("%Y-%m")
+
+
+def _state_object_path(kind: str, fileset_id: str, ym: str) -> str:
+    return f"state/{kind}/{fileset_id}/{ym}.json"
+
+
+def read_monthly_usage(fileset_id: str, ym: str | None = None) -> int:
+    ym = ym or get_current_year_month()
+    blob = _bucket().blob(_state_object_path("usage", fileset_id, ym))
+    if not blob.exists():
+        return 0
+    try:
+        return int(json.loads(blob.download_as_bytes()).get("chars_used", 0))
+    except Exception:
+        logger.exception("Failed to parse usage object %s", blob.name)
+        return 0
+
+
+def increment_monthly_usage(
+    fileset_id: str, delta: int, ym: str | None = None
+) -> int:
+    """Atomic-ish increment using ``if_generation_match``. Returns new total.
+
+    Tolerant of concurrent writers: retries the read-modify-write loop on
+    precondition conflicts until it succeeds (in practice only the single
+    Cloud Run Job writes here, but the lock above already enforces that)."""
+    ym = ym or get_current_year_month()
+    path = _state_object_path("usage", fileset_id, ym)
+    while True:
+        blob = _bucket().blob(path)
+        if blob.exists():
+            blob.reload()
+            current = int(
+                json.loads(blob.download_as_bytes()).get("chars_used", 0)
+            )
+            new_total = current + delta
+            payload = json.dumps({
+                "chars_used": new_total,
+                "updated_at": _utc_naive_now().isoformat(),
+            })
+            try:
+                blob.upload_from_string(
+                    payload,
+                    content_type="application/json",
+                    if_generation_match=blob.generation,
+                )
+                return new_total
+            except _GCS_UPLOAD_CONFLICT:
+                continue
+        else:
+            payload = json.dumps({
+                "chars_used": delta,
+                "updated_at": _utc_naive_now().isoformat(),
+            })
+            try:
+                blob.upload_from_string(
+                    payload,
+                    content_type="application/json",
+                    if_generation_match=0,
+                )
+                return delta
+            except _GCS_UPLOAD_CONFLICT:
+                continue
+
+
+def acquire_run_lock(
+    fileset_id: str,
+    stale_after_hours: int,
+    ym: str | None = None,
+) -> Tuple[bool, str]:
+    """Try to acquire the once-per-month run lock.
+
+    Returns ``(acquired, reason)``. ``reason`` is one of:
+      - ``"acquired"`` — fresh lock created; caller may proceed.
+      - ``"stale_overridden"`` — previous lock was older than
+        ``stale_after_hours`` and we replaced it; caller may proceed.
+      - ``"already_completed"`` — this month's run already finished.
+        Caller must exit without doing work.
+      - ``"active_run"`` — another run is in progress and is fresh.
+        Caller must exit without doing work."""
+    ym = ym or get_current_year_month()
+    path = _state_object_path("lock", fileset_id, ym)
+    blob = _bucket().blob(path)
+    now = _utc_naive_now()
+
+    if blob.exists():
+        blob.reload()
+        existing = json.loads(blob.download_as_bytes())
+        if existing.get("status") == "completed":
+            return False, "already_completed"
+        try:
+            started_at = datetime.datetime.fromisoformat(existing["started_at"])
+        except Exception:
+            started_at = now  # malformed -> treat as fresh
+        age = now - started_at
+        if age < datetime.timedelta(hours=stale_after_hours):
+            return False, "active_run"
+        payload = json.dumps({
+            "status": "running",
+            "started_at": now.isoformat(),
+            "overrode_stale": existing.get("started_at"),
+        })
+        try:
+            blob.upload_from_string(
+                payload,
+                content_type="application/json",
+                if_generation_match=blob.generation,
+            )
+            return True, "stale_overridden"
+        except _GCS_UPLOAD_CONFLICT:
+            return False, "active_run"
+
+    payload = json.dumps({
+        "status": "running",
+        "started_at": now.isoformat(),
+    })
+    try:
+        blob.upload_from_string(
+            payload,
+            content_type="application/json",
+            if_generation_match=0,
+        )
+        return True, "acquired"
+    except _GCS_UPLOAD_CONFLICT:
+        return False, "active_run"
+
+
+def mark_run_complete(
+    fileset_id: str,
+    chars_used: int,
+    chapters_generated: int,
+    reason: str,
+    ym: str | None = None,
+) -> None:
+    """Mark the current month's lock as completed. Idempotent."""
+    ym = ym or get_current_year_month()
+    path = _state_object_path("lock", fileset_id, ym)
+    blob = _bucket().blob(path)
+    if not blob.exists():
+        return
+    blob.reload()
+    existing = json.loads(blob.download_as_bytes())
+    existing.update({
+        "status": "completed",
+        "completed_at": _utc_naive_now().isoformat(),
+        "chars_used": chars_used,
+        "chapters_generated": chapters_generated,
+        "reason": reason,
+    })
+    try:
+        blob.upload_from_string(
+            json.dumps(existing),
+            content_type="application/json",
+            if_generation_match=blob.generation,
+        )
+    except _GCS_UPLOAD_CONFLICT:
+        logger.warning("Lock object changed concurrently; cannot mark complete.")

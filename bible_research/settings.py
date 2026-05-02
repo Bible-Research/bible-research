@@ -131,6 +131,10 @@ if IS_GCP_ENVIRONMENT:
     AUDIO_SIGNED_URL_TTL_SECONDS = int(
         os.environ.get("AUDIO_SIGNED_URL_TTL_SECONDS", "3600")
     )
+    MONTHLY_TTS_CHAR_LIMIT = int(
+        os.environ.get("MONTHLY_TTS_CHAR_LIMIT", "100000")
+    )
+    LOCK_STALE_HOURS = int(os.environ.get("LOCK_STALE_HOURS", "24"))
 
 elif IS_VERCEL:
     # --- Production on Vercel ---
@@ -204,6 +208,10 @@ elif IS_VERCEL:
     AUDIO_SIGNED_URL_TTL_SECONDS = int(
         os.environ.get("AUDIO_SIGNED_URL_TTL_SECONDS", "3600")
     )
+    MONTHLY_TTS_CHAR_LIMIT = int(
+        os.environ.get("MONTHLY_TTS_CHAR_LIMIT", "100000")
+    )
+    LOCK_STALE_HOURS = int(os.environ.get("LOCK_STALE_HOURS", "24"))
 
 else:
     # --- Local Development ---
@@ -245,6 +253,10 @@ else:
     AUDIO_SIGNED_URL_TTL_SECONDS = int(
         config.get("AUDIO_SIGNED_URL_TTL_SECONDS", 3600)
     )
+    MONTHLY_TTS_CHAR_LIMIT = int(
+        config.get("MONTHLY_TTS_CHAR_LIMIT", 100000)
+    )
+    LOCK_STALE_HOURS = int(config.get("LOCK_STALE_HOURS", 24))
 
 # Ensure DBT_KEY is available as an environment variable if it exists
 if DBT_KEY:

@@ -32,3 +32,5 @@ def test_synthesizer_builds_cumulative_timestamps():
     # MP3 bytes are concatenated
     assert artifacts.mp3_bytes.startswith(fake_audio)
     assert len(artifacts.mp3_bytes) == len(fake_audio) * len(payload["data"])
+    assert artifacts.chars_used > 0
+    assert isinstance(artifacts.chars_used, int)
