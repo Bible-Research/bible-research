@@ -24,7 +24,7 @@ resource "google_secret_manager_secret_iam_member" "audio_generator_django_secre
 
 resource "google_cloud_run_v2_job" "audio_generator" {
   name     = "audio-generator"
-  location = var.region
+  location = local.app_engine_region
   project  = var.project_id
 
   template {
@@ -36,7 +36,7 @@ resource "google_cloud_run_v2_job" "audio_generator" {
       containers {
         # Reuse the App Engine container image. Pin to a tag your CI
         # pipeline publishes; "latest" works for the sandbox project.
-        image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.gae_standard.repository_id}/bible-research:latest"
+        image = "${local.app_engine_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.gae_standard.repository_id}/bible-research:latest"
 
         command = [
           "python", "manage.py", "generate_chapter_audio",

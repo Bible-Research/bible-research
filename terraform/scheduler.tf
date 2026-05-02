@@ -18,11 +18,11 @@ resource "google_cloud_scheduler_job" "monthly_audio_generator" {
   schedule    = "0 3 1 * *"
   time_zone   = "Europe/Riga"
   project     = var.project_id
-  region      = var.region
+  region      = local.app_engine_region
 
   http_target {
     http_method = "POST"
-    uri         = "https://${var.region}-run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.audio_generator.name}:run"
+    uri         = "https://${local.app_engine_region}-run.googleapis.com/v2/projects/${var.project_id}/locations/${local.app_engine_region}/jobs/${google_cloud_run_v2_job.audio_generator.name}:run"
 
     oauth_token {
       service_account_email = google_service_account.audio_scheduler.email

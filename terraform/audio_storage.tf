@@ -1,6 +1,6 @@
 resource "google_storage_bucket" "bible_audio" {
   name                        = "${var.project_id}-bible-audio"
-  location                    = var.region
+  location                    = local.app_engine_region
   project                     = var.project_id
   force_destroy               = false
   uniform_bucket_level_access = true
