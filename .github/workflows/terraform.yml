@@ -65,9 +65,19 @@ jobs:
       - name: Terraform plan (PR)
         id: tfplan
         if: github.event_name == 'pull_request'
+        # ``-refresh=false`` lets the PR plan succeed when the CI
+        # service account lacks the IAM read permissions needed to
+        # refresh pre-existing resources (specifically:
+        # iam.serviceAccounts.getIamPolicy on the appspot SA and
+        # iam.workloadIdentityPools.get on the github-actions pool,
+        # granted only by IAM bindings that some PRs themselves
+        # add). The diff is computed against the GCS-locked state
+        # file, which is still the source of truth since Terraform
+        # is the only writer. ``terraform apply`` on main still
+        # refreshes normally so real drift is caught at deploy time.
         run: |
           set -o pipefail
-          terraform plan -input=false -no-color -lock-timeout=15m 2>&1 | tee plan.txt
+          terraform plan -input=false -no-color -lock-timeout=15m -refresh=false 2>&1 | tee plan.txt
 
       - name: Comment plan on PR
         if: github.event_name == 'pull_request' && success()
