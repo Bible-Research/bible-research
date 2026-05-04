@@ -52,3 +52,10 @@ output "audio_generator_job_name" {
 output "audio_scheduler_job_name" {
   value = google_cloud_scheduler_job.monthly_audio_generator.name
 }
+
+# Base image path (without tag) for the audio-generator Cloud Run Job.
+# The Deploy workflow appends ":<git-sha>" when building, pushing, and
+# pinning the Cloud Run Job to the new immutable image.
+output "audio_generator_image_base" {
+  value = "${google_artifact_registry_repository.audio_generator.location}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.audio_generator.repository_id}/audio-generator"
+}

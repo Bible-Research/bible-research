@@ -34,16 +34,19 @@ resource "google_cloud_run_v2_job" "audio_generator" {
       max_retries     = 0
 
       containers {
-        # Bootstrap image only. The real image is the one just built
-        # by ``gcloud app deploy`` (App Engine Standard publishes to
-        # the gae-standard Artifact Registry repo under auto-generated
-        # names like .../gae-standard/app-engine-tmp/app/<hash>, which
-        # Terraform cannot predict). The ``Deploy to App Engine``
-        # GitHub Actions workflow reads the currently serving GAE
-        # version's image, resolves it to an immutable
-        # ``@sha256:<digest>`` reference, and updates this Cloud Run
-        # Job via ``gcloud run jobs update``. The ``ignore_changes``
-        # lifecycle below tells Terraform not to fight the CI writer.
+        # Bootstrap image only. The real image is built and pushed by
+        # the ``Deploy to App Engine`` GitHub Actions workflow (see
+        # .github/workflows/deploy.yml) into the dedicated
+        # ``audio-generator`` Artifact Registry repository under the
+        # deterministic tag ``audio-generator:<git-sha>``. That same
+        # workflow then runs ``gcloud run jobs update`` to point this
+        # Cloud Run Job at the freshly pushed immutable digest. The
+        # ``ignore_changes`` lifecycle below tells Terraform not to
+        # fight the CI writer, which is also why we can safely keep a
+        # placeholder bootstrap image here (the public
+        # ``gcr.io/cloudrun/hello`` is guaranteed to exist so the very
+        # first ``terraform apply`` — before CI has pushed anything —
+        # still succeeds).
         image = "gcr.io/cloudrun/hello"
 
         command = [

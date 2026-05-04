@@ -64,40 +64,47 @@ jobs:
             --sort-by=~last_deployed_time \
             --limit=5
 
-      # Keep the audio-generator Cloud Run Job pinned to the same
-      # immutable image digest that App Engine just started serving.
-      # Terraform ignores changes to this field (see audio_generator.tf
-      # lifecycle block), so only this step drives the image reference.
-      - name: Sync audio-generator Cloud Run Job image
+      # Build a dedicated container image for the audio-generator
+      # Cloud Run Job, push it to the ``audio-generator`` Artifact
+      # Registry repo under a deterministic ``:<git-sha>`` tag, then
+      # pin the Cloud Run Job to the freshly pushed immutable digest.
+      # Terraform ignores changes to the Job image (see
+      # audio_generator.tf lifecycle block), so this step is the sole
+      # writer of the field. We no longer piggyback on App Engine's
+      # auto-generated gae-standard image (whose path Terraform cannot
+      # predict, which previously forced an unusable ``:latest`` tag).
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker \
+            "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push audio-generator image
+        id: audio_image
         run: |
           set -euo pipefail
 
-          VERSION=$(gcloud app versions list \
-            --project="${GCP_PROJECT_ID}" \
-            --service=default \
-            --hide-no-traffic \
-            --sort-by=~last_deployed_time \
-            --limit=1 \
-            --format='value(version.id)')
-          echo "Current serving GAE version: ${VERSION}"
+          IMAGE_BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AUDIO_IMAGE_REPO}/${AUDIO_IMAGE_NAME}"
+          IMAGE_TAGGED="${IMAGE_BASE}:${GITHUB_SHA}"
+          echo "Building ${IMAGE_TAGGED}"
 
-          IMAGE=$(gcloud app versions describe "${VERSION}" \
-            --project="${GCP_PROJECT_ID}" \
-            --service=default \
-            --format='value(deployment.container.image)')
-          echo "Current GAE image ref: ${IMAGE}"
+          docker build -t "${IMAGE_TAGGED}" .
+          docker push "${IMAGE_TAGGED}"
 
-          # Resolve the (mutable) tag to an immutable digest so the
+          # Resolve the just-pushed tag to its immutable digest so the
           # scheduled monthly job always runs the exact image that
-          # shipped, even after subsequent deploys overwrite the tag.
-          DIGEST=$(gcloud artifacts docker images describe "${IMAGE}" \
+          # shipped, even after subsequent deploys overwrite tags.
+          DIGEST=$(gcloud artifacts docker images describe \
+            "${IMAGE_TAGGED}" \
             --project="${GCP_PROJECT_ID}" \
             --format='value(image_summary.digest)')
-          IMAGE_NO_TAG="${IMAGE%:*}"
-          IMMUTABLE="${IMAGE_NO_TAG}@${DIGEST}"
+          IMMUTABLE="${IMAGE_BASE}@${DIGEST}"
           echo "Immutable image ref: ${IMMUTABLE}"
+          echo "immutable_image=${IMMUTABLE}" >> "${GITHUB_OUTPUT}"
 
+      - name: Sync audio-generator Cloud Run Job image
+        run: |
+          set -euo pipefail
           gcloud run jobs update "${AUDIO_JOB_NAME}" \
-            --image="${IMMUTABLE}" \
+            --image="${{ steps.audio_image.outputs.immutable_image }}" \
             --region="${GCP_REGION}" \
             --project="${GCP_PROJECT_ID}"
