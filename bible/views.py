@@ -1,4 +1,6 @@
 import logging
+
+from google.api_core import exceptions as gcs_exceptions
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -128,7 +130,18 @@ class BiblePassageView(APIView):
                     f"Successfully retrieved passage: "
                     f"{book_name} {chapter} ({fileset_id})"
                 )
-                return Response(serializer.to_representation(data))
+                body = serializer.to_representation(data)
+                # Surface "audio requested but not generated yet" as
+                # a proper 404 instead of a 200 with ``audio_url: None``
+                # so clients can reliably branch on status code.
+                if (
+                    body.get('format') == 'audio'
+                    and body.get('audio_url') is None
+                ):
+                    return Response(
+                        body, status=status.HTTP_404_NOT_FOUND
+                    )
+                return Response(body)
 
             logger.error(
                 f"Serializer validation failed: {serializer.errors}"
@@ -182,10 +195,27 @@ class AudioTimestampView(APIView):
                     payload = gcs.read_timestamps_json(
                         canon, book_id, int(chapter)
                     )
-                except Exception as exc:  # noqa: BLE001
+                except gcs_exceptions.NotFound:
                     return Response(
-                        {"error": f"Timestamps not available: {exc}"},
+                        {
+                            "error": (
+                                "Timestamps not yet generated for "
+                                "this chapter."
+                            ),
+                        },
                         status=status.HTTP_404_NOT_FOUND,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # Auth / network / malformed-JSON errors are not
+                    # a missing resource -- surface them as 502 so
+                    # clients don't mistake them for a 404.
+                    logger.exception(
+                        "Failed to read timestamps for %s %s %s",
+                        canon, book_id, chapter,
+                    )
+                    return Response(
+                        {"error": f"Timestamps unavailable: {exc}"},
+                        status=status.HTTP_502_BAD_GATEWAY,
                     )
                 return Response({"data": payload.get("data", [])})
 
