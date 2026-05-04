@@ -8,6 +8,31 @@ resource "google_storage_bucket" "bible_audio" {
   versioning {
     enabled = true
   }
+
+  # Versioning without a lifecycle rule would let noncurrent MP3
+  # revisions accumulate forever. 30 days is long enough to recover
+  # from an accidental overwrite or a bad TTS generation, short
+  # enough to keep storage cost bounded.
+  lifecycle_rule {
+    condition {
+      with_state = "ARCHIVED"
+      age        = 30
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  # Belt-and-braces: orphan multipart uploads should also be cleaned
+  # up rather than lingering as billable fragments.
+  lifecycle_rule {
+    condition {
+      age = 7
+    }
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
+  }
 }
 
 resource "google_storage_bucket_iam_member" "appspot_audio_reader" {
