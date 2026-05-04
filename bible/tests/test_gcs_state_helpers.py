@@ -85,6 +85,49 @@ def test_increment_monthly_usage_round_trip(fake_bucket):
     assert gcs.read_monthly_usage("LVSGLU8") == 1750
 
 
+def test_increment_monthly_usage_bounded_on_persistent_conflict(
+    fake_bucket,
+):
+    """Regression: the retry loop must be bounded so a persistent
+    precondition conflict (e.g. IAM regression, rogue writer) cannot
+    spin the Cloud Run Job until its timeout fires. After
+    ``max_retries + 1`` attempts we must raise
+    ``UsageIncrementConflict`` rather than loop forever."""
+    from google.api_core import exceptions as gax
+
+    # Seed an existing usage object so we take the read-modify-write
+    # branch (which is the branch that could spin forever).
+    ym = gcs.get_current_year_month()
+    path = f"state/usage/LVSGLU8/{ym}.json"
+    fake_bucket._store[path] = {
+        "data": json.dumps({"chars_used": 100}).encode(),
+        "gen": 1,
+    }
+
+    def always_conflict(self, *_, **__):
+        raise gax.PreconditionFailed("simulated persistent conflict")
+
+    sleeps: list[float] = []
+    original = _FakeBlob.upload_from_string
+    _FakeBlob.upload_from_string = always_conflict
+    try:
+        with pytest.raises(gcs.UsageIncrementConflict):
+            gcs.increment_monthly_usage(
+                "LVSGLU8",
+                50,
+                max_retries=3,
+                _sleep=sleeps.append,
+            )
+    finally:
+        _FakeBlob.upload_from_string = original
+
+    # Backoff should have been invoked ``max_retries`` times (no sleep
+    # after the final attempt).
+    assert len(sleeps) == 3
+    # Exponential: base * 2**attempt, base = 0.1.
+    assert sleeps == [0.1, 0.2, 0.4]
+
+
 def test_acquire_lock_tolerates_aware_started_at(fake_bucket):
     """Regression: if a lock object stores ``started_at`` with a tz
     offset (e.g. ``+00:00``), ``acquire_run_lock`` must not crash with

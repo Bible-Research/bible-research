@@ -6,6 +6,7 @@ import datetime
 import json
 import logging
 import threading
+import time
 from io import BytesIO
 from typing import Optional, Set, Tuple
 
@@ -177,17 +178,38 @@ def read_monthly_usage(fileset_id: str, ym: str | None = None) -> int:
         return 0
 
 
+_USAGE_MAX_CONFLICT_RETRIES = 8
+_USAGE_RETRY_BASE_SLEEP_SECONDS = 0.1
+
+
+class UsageIncrementConflict(Exception):
+    """Raised when ``increment_monthly_usage`` cannot win the
+    read-modify-write race within ``_USAGE_MAX_CONFLICT_RETRIES``
+    attempts. The caller must decide whether to abort the run — in
+    practice we expect zero conflicts because the run lock serializes
+    writers, so repeated failures almost always indicate a real problem
+    (IAM misconfig, another process running, etc.)."""
+
+
 def increment_monthly_usage(
-    fileset_id: str, delta: int, ym: str | None = None
+    fileset_id: str,
+    delta: int,
+    ym: str | None = None,
+    max_retries: int = _USAGE_MAX_CONFLICT_RETRIES,
+    _sleep=None,
 ) -> int:
     """Atomic-ish increment using ``if_generation_match``. Returns new total.
 
-    Tolerant of concurrent writers: retries the read-modify-write loop on
-    precondition conflicts until it succeeds (in practice only the single
-    Cloud Run Job writes here, but the lock above already enforces that)."""
+    Retries the read-modify-write loop on precondition conflicts with
+    exponential backoff, but is bounded by ``max_retries`` so an
+    IAM/config regression cannot spin the Cloud Run Job until its 3600s
+    timeout fires. In normal operation the run lock guarantees a single
+    writer, so conflicts should be 0."""
+    sleep = _sleep or time.sleep
     ym = ym or get_current_year_month()
     path = _state_object_path("usage", fileset_id, ym)
-    while True:
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
         blob = _bucket().blob(path)
         if blob.exists():
             blob.reload()
@@ -206,8 +228,8 @@ def increment_monthly_usage(
                     if_generation_match=blob.generation,
                 )
                 return new_total
-            except _GCS_UPLOAD_CONFLICT:
-                continue
+            except _GCS_UPLOAD_CONFLICT as exc:
+                last_exc = exc
         else:
             payload = json.dumps({
                 "chars_used": delta,
@@ -220,8 +242,15 @@ def increment_monthly_usage(
                     if_generation_match=0,
                 )
                 return delta
-            except _GCS_UPLOAD_CONFLICT:
-                continue
+            except _GCS_UPLOAD_CONFLICT as exc:
+                last_exc = exc
+        if attempt < max_retries:
+            sleep(_USAGE_RETRY_BASE_SLEEP_SECONDS * (2 ** attempt))
+
+    raise UsageIncrementConflict(
+        f"increment_monthly_usage for {fileset_id} {ym} failed after "
+        f"{max_retries + 1} attempts: {last_exc}"
+    )
 
 
 def acquire_run_lock(
