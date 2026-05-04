@@ -104,60 +104,78 @@ class Command(BaseCommand):
         complete_reason = "all_done"
 
         for book_id, chap in pending:
+            # Persist the delta in ``finally`` so characters that Cloud
+            # TTS has already billed us for get written to GCS even if
+            # the chapter errors mid-way or the upload fails. Without
+            # this, a persistent upload failure would silently let us
+            # exceed ``MONTHLY_TTS_CHAR_LIMIT`` on the next run.
+            chapter_start_used = budget.used
             try:
-                artifacts = synthesizer.run(
-                    fileset_id, book_id, chap, budget=budget,
-                )
-            except BudgetExceeded as exc:
-                logger.warning(
-                    "Monthly char budget exhausted at %s %s: %s. "
-                    "Resuming next month.",
-                    book_id, chap, exc,
-                )
-                self.stdout.write(
-                    f"budget_exhausted next={book_id} {chap} "
-                    f"generated={generated} chars_used={budget.used}"
-                )
-                complete_reason = "budget_exhausted"
-                break
-            except QuotaExceeded as exc:
-                logger.warning(
-                    "Cloud TTS quota exhausted at %s %s: %s.",
-                    book_id, chap, exc,
-                )
-                self.stdout.write(
-                    f"quota_exhausted next={book_id} {chap} "
-                    f"generated={generated} chars_used={budget.used}"
-                )
-                complete_reason = "quota_exhausted"
-                break
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(
-                    "Failed to generate %s %s: %s",
-                    book_id, chap, exc,
-                )
-                continue
+                try:
+                    artifacts = synthesizer.run(
+                        fileset_id, book_id, chap, budget=budget,
+                    )
+                except BudgetExceeded as exc:
+                    logger.warning(
+                        "Monthly char budget exhausted at %s %s: %s. "
+                        "Resuming next month.",
+                        book_id, chap, exc,
+                    )
+                    self.stdout.write(
+                        f"budget_exhausted next={book_id} {chap} "
+                        f"generated={generated} chars_used={budget.used}"
+                    )
+                    complete_reason = "budget_exhausted"
+                    break
+                except QuotaExceeded as exc:
+                    logger.warning(
+                        "Cloud TTS quota exhausted at %s %s: %s.",
+                        book_id, chap, exc,
+                    )
+                    self.stdout.write(
+                        f"quota_exhausted next={book_id} {chap} "
+                        f"generated={generated} chars_used={budget.used}"
+                    )
+                    complete_reason = "quota_exhausted"
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "Failed to generate %s %s: %s",
+                        book_id, chap, exc,
+                    )
+                    continue
 
-            try:
-                gcs.upload_chapter_artifacts(
-                    fileset_id, book_id, chap,
-                    artifacts.mp3_bytes,
-                    artifacts.timestamps_payload,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(
-                    "Failed to upload %s %s: %s",
-                    book_id, chap, exc,
-                )
-                continue
+                try:
+                    gcs.upload_chapter_artifacts(
+                        fileset_id, book_id, chap,
+                        artifacts.mp3_bytes,
+                        artifacts.timestamps_payload,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "Failed to upload %s %s: %s",
+                        book_id, chap, exc,
+                    )
+                    continue
 
-            gcs.increment_monthly_usage(fileset_id, artifacts.chars_used)
-            generated += 1
-            logger.info(
-                "Generated %s %s chars=%d duration=%.2fs",
-                book_id, chap, artifacts.chars_used,
-                artifacts.duration_seconds,
-            )
+                generated += 1
+                logger.info(
+                    "Generated %s %s chars=%d duration=%.2fs",
+                    book_id, chap, artifacts.chars_used,
+                    artifacts.duration_seconds,
+                )
+            finally:
+                delta = budget.used - chapter_start_used
+                if delta > 0:
+                    try:
+                        gcs.increment_monthly_usage(fileset_id, delta)
+                    except Exception:  # noqa: BLE001
+                        logger.exception(
+                            "Failed to persist usage delta=%d for "
+                            "%s %s; in-memory budget still reflects "
+                            "the spend but GCS counter is stale.",
+                            delta, book_id, chap,
+                        )
 
         gcs.mark_run_complete(
             fileset_id,

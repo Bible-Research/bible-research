@@ -54,13 +54,21 @@ class Synthesizer:
         chunks: list[bytes] = []
         timestamps: list[dict] = []
         cumulative = 0.0
+        # Consume budget per-verse immediately after each successful
+        # ``synthesize_text`` call so ``budget.used`` reflects characters
+        # Google has actually billed us for, even if a later verse in
+        # this chapter raises or the upload fails. The caller is
+        # responsible for persisting ``budget.used`` to durable storage.
         for v in verses:
+            verse_chars = len(v["verse_text"])
             audio = self._tts.synthesize_text(
                 text=v["verse_text"],
                 language_code=cfg["language_code"],
                 voice_name=cfg["voice_name"],
                 sample_rate_hertz=cfg["sample_rate_hertz"],
             )
+            if budget is not None:
+                budget.consume(verse_chars)
             duration = float(MP3(io.BytesIO(audio)).info.length)
             timestamps.append({
                 "verse_start": v["verse_start"],
@@ -68,9 +76,6 @@ class Synthesizer:
             })
             cumulative += duration
             chunks.append(audio)
-
-        if budget is not None:
-            budget.consume(chapter_chars)
 
         return ChapterArtifacts(
             mp3_bytes=b"".join(chunks),
