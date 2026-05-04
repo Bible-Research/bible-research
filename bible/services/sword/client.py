@@ -2,11 +2,11 @@
 by `BiblePassageSerializer`."""
 import logging
 import threading
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from pysword.modules import SwordModules
 
-from bible.utils.bible_books import get_pysword_book_name
+from bible.utils.bible_books import _BIBLE_BOOKS, get_pysword_book_name
 
 from .registry import (
     SWORD_MODULES_DIR,
@@ -99,6 +99,42 @@ class SwordClient:
                 f"in fileset_id={fileset_id}"
             )
         return verses
+
+    def list_chapters(
+        self, fileset_id: str
+    ) -> List[Tuple[str, int]]:
+        """Return an ordered ``[(book_id, chapter), ...]`` worklist
+        sourced directly from this fileset's SWORD module structure.
+
+        Traverses pysword's own OT → NT canonical order so that the
+        audio generator never assumes any other Bible's versification
+        (e.g. LVSGLU8 / Glück 1877 may not match ESV chapter/book
+        counts). Books whose SWORD name has no mapping in
+        ``_BIBLE_BOOKS`` are logged and skipped."""
+        canon = canonical_sword_fileset_id(fileset_id)
+        if canon is None:
+            raise ValueError(
+                f"Unknown SWORD fileset: {fileset_id!r}"
+            )
+        _modules, bible = self._load(canon)
+
+        name_to_id = {
+            name.lower(): code for name, code, _ in _BIBLE_BOOKS
+        }
+        out: List[Tuple[str, int]] = []
+        for _testament, books in bible.get_structure().get_books().items():
+            for book in books:
+                book_id = name_to_id.get(book.name.lower())
+                if book_id is None:
+                    logger.warning(
+                        "SWORD module %s book %r has no book_id "
+                        "mapping in _BIBLE_BOOKS; skipping.",
+                        canon, book.name,
+                    )
+                    continue
+                for chap in range(1, book.num_chapters + 1):
+                    out.append((book_id, chap))
+        return out
 
     def get_translation_listing(self) -> List[Dict[str, Any]]:
         """Return registry entries shaped like DBT translations."""
