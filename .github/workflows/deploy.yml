@@ -11,8 +11,10 @@ permissions:
 
 env:
   GCP_PROJECT_ID: bible-research-489314
+  GCP_REGION: europe-west3
   WIF_PROVIDER: projects/670506724494/locations/global/workloadIdentityPools/github-actions/providers/github
   DEPLOY_SA: github-deployer@bible-research-489314.iam.gserviceaccount.com
+  AUDIO_JOB_NAME: audio-generator
 
 jobs:
   deploy:
@@ -61,3 +63,41 @@ jobs:
             --hide-no-traffic \
             --sort-by=~last_deployed_time \
             --limit=5
+
+      # Keep the audio-generator Cloud Run Job pinned to the same
+      # immutable image digest that App Engine just started serving.
+      # Terraform ignores changes to this field (see audio_generator.tf
+      # lifecycle block), so only this step drives the image reference.
+      - name: Sync audio-generator Cloud Run Job image
+        run: |
+          set -euo pipefail
+
+          VERSION=$(gcloud app versions list \
+            --project="${GCP_PROJECT_ID}" \
+            --service=default \
+            --hide-no-traffic \
+            --sort-by=~last_deployed_time \
+            --limit=1 \
+            --format='value(version.id)')
+          echo "Current serving GAE version: ${VERSION}"
+
+          IMAGE=$(gcloud app versions describe "${VERSION}" \
+            --project="${GCP_PROJECT_ID}" \
+            --service=default \
+            --format='value(deployment.container.image)')
+          echo "Current GAE image ref: ${IMAGE}"
+
+          # Resolve the (mutable) tag to an immutable digest so the
+          # scheduled monthly job always runs the exact image that
+          # shipped, even after subsequent deploys overwrite the tag.
+          DIGEST=$(gcloud artifacts docker images describe "${IMAGE}" \
+            --project="${GCP_PROJECT_ID}" \
+            --format='value(image_summary.digest)')
+          IMAGE_NO_TAG="${IMAGE%:*}"
+          IMMUTABLE="${IMAGE_NO_TAG}@${DIGEST}"
+          echo "Immutable image ref: ${IMMUTABLE}"
+
+          gcloud run jobs update "${AUDIO_JOB_NAME}" \
+            --image="${IMMUTABLE}" \
+            --region="${GCP_REGION}" \
+            --project="${GCP_PROJECT_ID}"

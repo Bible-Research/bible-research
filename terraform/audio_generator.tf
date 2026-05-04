@@ -34,9 +34,17 @@ resource "google_cloud_run_v2_job" "audio_generator" {
       max_retries     = 0
 
       containers {
-        # Reuse the App Engine container image. Pin to a tag your CI
-        # pipeline publishes; "latest" works for the sandbox project.
-        image = "${local.app_engine_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.gae_standard.repository_id}/bible-research:latest"
+        # Bootstrap image only. The real image is the one just built
+        # by ``gcloud app deploy`` (App Engine Standard publishes to
+        # the gae-standard Artifact Registry repo under auto-generated
+        # names like .../gae-standard/app-engine-tmp/app/<hash>, which
+        # Terraform cannot predict). The ``Deploy to App Engine``
+        # GitHub Actions workflow reads the currently serving GAE
+        # version's image, resolves it to an immutable
+        # ``@sha256:<digest>`` reference, and updates this Cloud Run
+        # Job via ``gcloud run jobs update``. The ``ignore_changes``
+        # lifecycle below tells Terraform not to fight the CI writer.
+        image = "gcr.io/cloudrun/hello"
 
         command = [
           "python", "manage.py", "generate_chapter_audio",
@@ -111,4 +119,35 @@ resource "google_cloud_run_v2_job" "audio_generator" {
     google_secret_manager_secret_iam_member.audio_generator_db_url,
     google_secret_manager_secret_iam_member.audio_generator_django_secret,
   ]
+
+  lifecycle {
+    # The image is owned by the CI pipeline (see deploy.yml). Without
+    # this ignore, every ``terraform apply`` after a CI deploy would
+    # revert the job to the bootstrap placeholder.
+    ignore_changes = [
+      template[0].template[0].containers[0].image,
+    ]
+  }
+}
+
+# github-deployer needs these additional permissions to run
+# ``gcloud run jobs update audio-generator --image=...`` from the
+# Deploy to App Engine workflow. The serviceAccountUser binding
+# (required to act as the runtime SA) is scoped to the specific
+# ``audio-generator`` SA rather than granted project-wide.
+resource "google_project_iam_member" "github_deployer_run_developer" {
+  project = var.project_id
+  role    = "roles/run.developer"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
+}
+
+resource "google_service_account_iam_member" "github_deployer_act_as_audio_generator" {
+  service_account_id = google_service_account.audio_generator.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_deployer.email}"
 }
