@@ -1,10 +1,9 @@
 """Generate Cloud TTS audio + timestamps for missing chapters and upload
 them to GCS. Designed to be invoked by a Cloud Run Job once per month."""
 import logging
-import sys
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from bible.services.google_tts.budget import BudgetExceeded, CharBudget
 from bible.services.google_tts.client import QuotaExceeded
@@ -32,10 +31,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         fileset_id = canonical_sword_fileset_id(options["fileset_id"])
         if not fileset_id:
-            self.stderr.write(
+            raise CommandError(
                 f"Unknown fileset_id: {options['fileset_id']!r}"
             )
-            sys.exit(2)
         dry_run = options["dry_run"]
 
         # Worklist comes straight from the SWORD module so we never
