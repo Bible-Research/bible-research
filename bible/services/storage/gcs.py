@@ -249,8 +249,20 @@ def acquire_run_lock(
         existing = json.loads(blob.download_as_bytes())
         if existing.get("status") == "completed":
             return False, "already_completed"
+        # ``fromisoformat`` returns an aware datetime iff the string
+        # carries a tz offset. Historical lock objects stored naive
+        # UTC (see ``_utc_naive_now``) but a future writer, a manual
+        # edit, or a different runtime could persist an aware value.
+        # Normalize to naive UTC before arithmetic; otherwise subtracting
+        # from ``now`` (naive) would raise TypeError and crash the job.
         try:
-            started_at = datetime.datetime.fromisoformat(existing["started_at"])
+            started_at = datetime.datetime.fromisoformat(
+                existing["started_at"]
+            )
+            if started_at.tzinfo is not None:
+                started_at = started_at.astimezone(
+                    datetime.timezone.utc
+                ).replace(tzinfo=None)
         except Exception:
             started_at = now  # malformed -> treat as fresh
         age = now - started_at

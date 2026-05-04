@@ -1,3 +1,5 @@
+import datetime
+import json
 from unittest.mock import patch
 
 import pytest
@@ -81,3 +83,48 @@ def test_increment_monthly_usage_round_trip(fake_bucket):
     assert gcs.increment_monthly_usage("LVSGLU8", 1500) == 1500
     assert gcs.increment_monthly_usage("LVSGLU8", 250) == 1750
     assert gcs.read_monthly_usage("LVSGLU8") == 1750
+
+
+def test_acquire_lock_tolerates_aware_started_at(fake_bucket):
+    """Regression: if a lock object stores ``started_at`` with a tz
+    offset (e.g. ``+00:00``), ``acquire_run_lock`` must not crash with
+    ``TypeError: can't subtract offset-naive and offset-aware``. An
+    old aware timestamp should be treated as stale and overridden."""
+    ym = gcs.get_current_year_month()
+    path = f"state/lock/LVSGLU8/{ym}.json"
+    stale_aware = (
+        datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(hours=48)
+    )
+    fake_bucket._store[path] = {
+        "data": json.dumps({
+            "status": "running",
+            "started_at": stale_aware.isoformat(),
+        }).encode(),
+        "gen": 1,
+    }
+
+    ok, reason = gcs.acquire_run_lock("LVSGLU8", stale_after_hours=24)
+
+    assert ok is True
+    assert reason == "stale_overridden"
+
+
+def test_acquire_lock_tolerates_fresh_aware_started_at(fake_bucket):
+    """Companion to the stale case: a *fresh* aware timestamp must
+    also be comparable without crashing and correctly block re-entry."""
+    ym = gcs.get_current_year_month()
+    path = f"state/lock/LVSGLU8/{ym}.json"
+    fresh_aware = datetime.datetime.now(datetime.timezone.utc)
+    fake_bucket._store[path] = {
+        "data": json.dumps({
+            "status": "running",
+            "started_at": fresh_aware.isoformat(),
+        }).encode(),
+        "gen": 1,
+    }
+
+    ok, reason = gcs.acquire_run_lock("LVSGLU8", stale_after_hours=24)
+
+    assert ok is False
+    assert reason == "active_run"
