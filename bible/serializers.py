@@ -38,7 +38,13 @@ class BiblePassageSerializer(serializers.Serializer):
         book_name = instance.get('book_name', '')
         chapter = int(instance.get('chapter'))
         fileset_id = instance.get('fileset_id')
-        response_format = instance.get('format', 'text')
+        # The view passes this as ``response_format`` to avoid shadowing
+        # DRF's own ``format`` kwarg on APIView. Fall back to the old
+        # ``format`` key for backwards compatibility if a caller still
+        # constructs the serializer instance directly.
+        response_format = instance.get(
+            'response_format', instance.get('format', 'text')
+        )
 
         try:
             if is_sword_fileset(fileset_id) and response_format == 'audio':

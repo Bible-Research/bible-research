@@ -113,7 +113,11 @@ class BiblePassageView(APIView):
                 'book': book_id,
                 'book_name': book_name,
                 'chapter': chapter,
-                'format': response_format,
+                # Key name matches the query-param name to keep the
+                # view/serializer boundary unambiguous; the serializer
+                # output still surfaces the result as ``format`` for
+                # backwards-compatible API consumers.
+                'response_format': response_format,
                 'fileset_id': fileset_id,
             }
             logger.debug(f"Prepared data for serializer: {data}")
