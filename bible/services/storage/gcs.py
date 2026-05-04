@@ -99,9 +99,14 @@ def upload_chapter_artifacts(
     audio_path, json_path = chapter_object_paths(fileset_id, book_id, chapter)
     bucket = _bucket()
 
+    # Embed the MP3 size at generation time so the read path can
+    # return it without a separate blob.metadata HEAD request.
+    enriched_payload = dict(timestamps_payload)
+    enriched_payload.setdefault("file_size_bytes", len(mp3_bytes))
+
     json_blob = bucket.blob(json_path)
     json_blob.upload_from_string(
-        json.dumps(timestamps_payload, ensure_ascii=False),
+        json.dumps(enriched_payload, ensure_ascii=False),
         content_type="application/json",
     )
 
@@ -124,6 +129,17 @@ def read_timestamps_json(
     return json.loads(blob.download_as_bytes())
 
 
+# Cache of live signed URLs keyed by ``(fileset_id, book_id, chapter)``.
+# Each value is ``(url, expires_at_monotonic)``. Signing a URL does a
+# round-trip to IAM's signBlob API, which is measurable latency and
+# rate-limited; caching for slightly less than the TTL means clients
+# that hit the same chapter repeatedly pay that cost at most once per
+# TTL window per process.
+_SIGNED_URL_SAFETY_MARGIN_SECONDS = 60
+_signed_url_cache: dict = {}
+_signed_url_cache_lock = threading.Lock()
+
+
 def signed_audio_url(
     fileset_id: str,
     book_id: str,
@@ -133,9 +149,21 @@ def signed_audio_url(
     """Return a V4 signed URL for the chapter's MP3.
 
     Works without a JSON key on App Engine / Cloud Run by passing the
-    runtime SA's email + an OAuth access token; GCS asks IAM to sign."""
+    runtime SA's email + an OAuth access token; GCS asks IAM to sign.
+
+    The URL is cached per ``(fileset_id, book_id, chapter)`` until
+    ``_SIGNED_URL_SAFETY_MARGIN_SECONDS`` before its real expiry so
+    back-to-back requests for the same chapter don't each trigger an
+    IAM signBlob call."""
     if ttl_seconds is None:
         ttl_seconds = settings.AUDIO_SIGNED_URL_TTL_SECONDS
+
+    cache_key = (fileset_id, book_id, chapter)
+    now = time.monotonic()
+    with _signed_url_cache_lock:
+        cached = _signed_url_cache.get(cache_key)
+        if cached is not None and cached[1] > now:
+            return cached[0]
 
     audio_path, _ = chapter_object_paths(fileset_id, book_id, chapter)
     blob = _bucket().blob(audio_path)
@@ -148,13 +176,19 @@ def signed_audio_url(
     )
     credentials.refresh(Request())
 
-    return blob.generate_signed_url(
+    url = blob.generate_signed_url(
         version="v4",
         expiration=datetime.timedelta(seconds=ttl_seconds),
         method="GET",
         service_account_email=credentials.service_account_email,
         access_token=credentials.token,
     )
+    expires_at = now + max(
+        ttl_seconds - _SIGNED_URL_SAFETY_MARGIN_SECONDS, 0
+    )
+    with _signed_url_cache_lock:
+        _signed_url_cache[cache_key] = (url, expires_at)
+    return url
 
 
 def get_current_year_month() -> str:

@@ -60,15 +60,23 @@ class BiblePassageSerializer(serializers.Serializer):
                             'Audio not yet generated for this chapter'
                         ),
                     }
-                audio_path, _ = gcs.chapter_object_paths(
-                    canon, book_id, chapter
-                )
-                blob = gcs.get_default_client().bucket(
-                    settings.AUDIO_BUCKET_NAME
-                ).get_blob(audio_path)
                 timestamps = gcs.read_timestamps_json(
                     canon, book_id, chapter
                 )
+                # ``file_size_bytes`` is embedded by the generator
+                # (see gcs.upload_chapter_artifacts) so the request
+                # path needs no separate blob.metadata HEAD. Older
+                # artifacts without that key fall back to a live
+                # lookup for one release of backwards compatibility.
+                file_size_bytes = timestamps.get('file_size_bytes')
+                if file_size_bytes is None:
+                    audio_path, _ = gcs.chapter_object_paths(
+                        canon, book_id, chapter
+                    )
+                    blob = gcs.get_default_client().bucket(
+                        settings.AUDIO_BUCKET_NAME
+                    ).get_blob(audio_path)
+                    file_size_bytes = blob.size if blob else None
                 return {
                     'book': book_id,
                     'book_name': book_name,
@@ -81,7 +89,7 @@ class BiblePassageSerializer(serializers.Serializer):
                         settings.AUDIO_SIGNED_URL_TTL_SECONDS,
                     ),
                     'duration_seconds': timestamps.get('duration_seconds'),
-                    'file_size_bytes': blob.size if blob else None,
+                    'file_size_bytes': file_size_bytes,
                 }
 
             if is_sword_fileset(fileset_id):

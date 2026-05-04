@@ -153,6 +153,49 @@ def test_acquire_lock_tolerates_aware_started_at(fake_bucket):
     assert reason == "stale_overridden"
 
 
+def test_signed_audio_url_caches_within_ttl(fake_bucket, monkeypatch):
+    """Regression: signed URLs are cached per (fileset, book, chapter)
+    within the TTL window so back-to-back requests for the same
+    chapter don't each trigger an IAM signBlob call."""
+    # Reset cache so ordering with other tests can't pollute results.
+    gcs._signed_url_cache.clear()
+
+    class _FakeCreds:
+        service_account_email = "svc@example.iam.gserviceaccount.com"
+        token = "tok"
+
+        def refresh(self, _request):
+            pass
+
+    refresh_calls = {"n": 0}
+
+    def fake_default(scopes=None):
+        refresh_calls["n"] += 1
+        return _FakeCreds(), "proj"
+
+    monkeypatch.setattr(gcs.google.auth, "default", fake_default)
+
+    sign_calls = {"n": 0}
+
+    def fake_generate_signed_url(self, **_):
+        sign_calls["n"] += 1
+        return f"https://signed/{sign_calls['n']}"
+
+    # Patch the fake blob used by this test module's _FakeBucket.
+    _FakeBlob.generate_signed_url = fake_generate_signed_url
+
+    url1 = gcs.signed_audio_url("LVSGLU8", "JHN", 3, ttl_seconds=300)
+    url2 = gcs.signed_audio_url("LVSGLU8", "JHN", 3, ttl_seconds=300)
+    url3 = gcs.signed_audio_url("LVSGLU8", "JHN", 4, ttl_seconds=300)
+
+    # Same chapter -> second call served from cache, no new signing.
+    assert url1 == url2
+    # Different chapter -> fresh signing.
+    assert url3 != url1
+    assert sign_calls["n"] == 2
+    assert refresh_calls["n"] == 2
+
+
 def test_acquire_lock_tolerates_fresh_aware_started_at(fake_bucket):
     """Companion to the stale case: a *fresh* aware timestamp must
     also be comparable without crashing and correctly block re-entry."""
