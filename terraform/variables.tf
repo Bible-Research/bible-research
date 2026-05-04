@@ -4,8 +4,9 @@ variable "project_id" {
 }
 
 variable "region" {
-  type    = string
-  default = "europe-west3"
+  type        = string
+  default     = "europe-west3"
+  description = "Default provider region. App Engine and Artifact Registry use europe-west3; audio resources follow Artifact Registry (see main.tf app_engine_region)."
 }
 
 # GitHub repository allowed to authenticate via WIF (e.g. Bible-Research/bible-research).

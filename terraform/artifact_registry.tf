@@ -29,3 +29,34 @@ resource "google_artifact_registry_repository" "gae_standard" {
 
   depends_on = [google_project_service.enabled]
 }
+
+# Dedicated repository for the audio-generator Cloud Run Job image.
+# The image is built and pushed by the Deploy workflow (see
+# .github/workflows/deploy.yml) under a deterministic name we own —
+# "audio-generator:<git-sha>" — so the Cloud Run Job no longer depends
+# on App Engine Standard's auto-generated image hashes (which Terraform
+# cannot predict and which forced an unusable ":latest" reference).
+resource "google_artifact_registry_repository" "audio_generator" {
+  location      = "europe-west3"
+  repository_id = "audio-generator"
+  description   = "Container image for the audio-generator Cloud Run Job."
+  format        = "DOCKER"
+
+  cleanup_policies {
+    id     = "keep-latest-6"
+    action = "KEEP"
+    most_recent_versions {
+      keep_count = 6
+    }
+  }
+
+  cleanup_policies {
+    id     = "delete-untagged"
+    action = "DELETE"
+    condition {
+      tag_state = "UNTAGGED"
+    }
+  }
+
+  depends_on = [google_project_service.enabled]
+}

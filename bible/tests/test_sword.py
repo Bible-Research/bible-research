@@ -27,6 +27,37 @@ class SwordClientTests(TestCase):
         self.assertEqual(len(by_abbr), len(by_id))
         self.assertEqual(by_abbr[0]['verse_text'], by_id[0]['verse_text'])
 
+    def test_list_chapters_comes_from_sword_structure(self):
+        """Regression: audio worklist must be sourced from the SWORD
+        module itself, never from ESV/KJV-derived JSON, so that the
+        audio generator respects this translation's own versification."""
+        client = get_default_sword_client()
+        worklist = client.list_chapters('LVSGLU8')
+
+        self.assertGreater(len(worklist), 0)
+
+        # Every entry is (book_id, chapter) with chapter starting at 1.
+        by_book: dict = {}
+        for book_id, chap in worklist:
+            self.assertIsInstance(book_id, str)
+            self.assertIsInstance(chap, int)
+            self.assertGreaterEqual(chap, 1)
+            by_book.setdefault(book_id, []).append(chap)
+
+        # Chapter lists are dense and start at 1 for each book.
+        for book_id, chapters in by_book.items():
+            self.assertEqual(
+                chapters, list(range(1, len(chapters) + 1)),
+                f"Non-contiguous chapters for {book_id}: {chapters}",
+            )
+
+        # Genesis and John must appear with plausible chapter counts
+        # for this specific translation (Glück 1877).
+        self.assertIn('GEN', by_book)
+        self.assertGreaterEqual(len(by_book['GEN']), 50)
+        self.assertIn('JHN', by_book)
+        self.assertEqual(len(by_book['JHN']), 21)
+
 
 class SwordAPITests(TestCase):
     def setUp(self):

@@ -1,3 +1,6 @@
+# Copy to terraform.tfvars for private overrides (gitignored), or rely on
+# committed ci.auto.tfvars for project_id, region, github_repo.
+
 project_id  = "bible-research-489314"
 region      = "europe-west3"
 github_repo = "Bible-Research/bible-research"

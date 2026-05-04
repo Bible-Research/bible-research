@@ -1,10 +1,16 @@
 import logging
+
+from google.api_core import exceptions as gcs_exceptions
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from bible.utils.bible_books import get_dbt_book_id
-from bible.services.sword.registry import is_sword_fileset
+from bible.services.sword.registry import (
+    canonical_sword_fileset_id,
+    is_sword_fileset,
+)
+from bible.services.storage import gcs
 from .serializers import BiblePassageSerializer
 from .services.translation_service import TranslationService
 from .services.dbt.client import get_default_dbt_client
@@ -26,7 +32,7 @@ class BiblePassageView(APIView):
     Example:
         /api/v1/bible/?passage=John+3&fileset_id=ENGESV
         /api/v1/bible/?passage=John+3&fileset_id=LVSGLU8   # Latvian Glück
-        /api/v1/bible/?passage=Luke+20&fileset_id=GLU8      # same, via abbr
+        /api/v1/bible/?passage=Luke+20&fileset_id=GLU8&response_format=audio  # Latvian audio
     """
 
     def get(self, request, format=None):
@@ -58,12 +64,6 @@ class BiblePassageView(APIView):
             return Response(
                 {"error": "Invalid format. Use 'text' or 'audio'"},
                 status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if response_format == 'audio' and is_sword_fileset(fileset_id):
-            return Response(
-                {"error": "Audio not available for this translation"},
-                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
@@ -115,7 +115,11 @@ class BiblePassageView(APIView):
                 'book': book_id,
                 'book_name': book_name,
                 'chapter': chapter,
-                'format': response_format,
+                # Key name matches the query-param name to keep the
+                # view/serializer boundary unambiguous; the serializer
+                # output still surfaces the result as ``format`` for
+                # backwards-compatible API consumers.
+                'response_format': response_format,
                 'fileset_id': fileset_id,
             }
             logger.debug(f"Prepared data for serializer: {data}")
@@ -126,7 +130,18 @@ class BiblePassageView(APIView):
                     f"Successfully retrieved passage: "
                     f"{book_name} {chapter} ({fileset_id})"
                 )
-                return Response(serializer.to_representation(data))
+                body = serializer.to_representation(data)
+                # Surface "audio requested but not generated yet" as
+                # a proper 404 instead of a 200 with ``audio_url: None``
+                # so clients can reliably branch on status code.
+                if (
+                    body.get('format') == 'audio'
+                    and body.get('audio_url') is None
+                ):
+                    return Response(
+                        body, status=status.HTTP_404_NOT_FOUND
+                    )
+                return Response(body)
 
             logger.error(
                 f"Serializer validation failed: {serializer.errors}"
@@ -173,6 +188,36 @@ class AudioTimestampView(APIView):
                     {"error": f"Unknown book: {book}"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+            if is_sword_fileset(fileset_id):
+                canon = canonical_sword_fileset_id(fileset_id)
+                try:
+                    payload = gcs.read_timestamps_json(
+                        canon, book_id, int(chapter)
+                    )
+                except gcs_exceptions.NotFound:
+                    return Response(
+                        {
+                            "error": (
+                                "Timestamps not yet generated for "
+                                "this chapter."
+                            ),
+                        },
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # Auth / network / malformed-JSON errors are not
+                    # a missing resource -- surface them as 502 so
+                    # clients don't mistake them for a 404.
+                    logger.exception(
+                        "Failed to read timestamps for %s %s %s",
+                        canon, book_id, chapter,
+                    )
+                    return Response(
+                        {"error": f"Timestamps unavailable: {exc}"},
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+                return Response({"data": payload.get("data", [])})
 
             dbt_client = get_default_dbt_client()
             result = dbt_client.get_timestamps(

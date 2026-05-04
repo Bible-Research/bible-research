@@ -15,7 +15,7 @@ db.sqlite3
 
 plan.md
 
-terraform/*.tfvars
+# Terraform: ignore local secret overrides only (committed *.auto.tfvars set region/project).
 terraform/terraform.tfvars
 terraform/.terraform/
 terraform/terraform.tfstate*

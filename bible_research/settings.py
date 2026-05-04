@@ -115,6 +115,8 @@ if IS_GCP_ENVIRONMENT:
         db_config['OPTIONS']['sslrootcert'] = CA_PEM_PATH
     DATABASES = {'default': db_config}
 
+    _audio_settings_source = os.environ
+
 elif IS_VERCEL:
     # --- Production on Vercel ---
     SECRET_KEY = os.environ.get('SECRET_KEY')
@@ -171,6 +173,8 @@ elif IS_VERCEL:
 
     DATABASES = {'default': db_config}
 
+    _audio_settings_source = os.environ
+
 else:
     # --- Local Development ---
     import yaml
@@ -194,6 +198,38 @@ else:
         if 'sslrootcert' in opts:
             cert_path = opts['sslrootcert']
             opts['sslrootcert'] = str(BASE_DIR / cert_path)
+
+    _audio_settings_source = config
+
+# Audio / Cloud TTS settings are resolved from a single source per
+# environment (os.environ in cloud branches, the parsed config.yaml
+# dict locally). Both support .get(key, default), so one block covers
+# all three environments without duplication.
+_default_bucket = (
+    f"{os.environ.get('GOOGLE_CLOUD_PROJECT', 'bible-research-489314')}"
+    "-bible-audio"
+)
+GOOGLE_TTS_LANGUAGE_CODE = _audio_settings_source.get(
+    "GOOGLE_TTS_LANGUAGE_CODE", "lv-LV"
+)
+GOOGLE_TTS_VOICE_NAME = _audio_settings_source.get(
+    "GOOGLE_TTS_VOICE_NAME", "lv-LV-Chirp3-HD-Sadachbia"
+)
+GOOGLE_TTS_SAMPLE_RATE_HERTZ = int(
+    _audio_settings_source.get("GOOGLE_TTS_SAMPLE_RATE_HERTZ", 24000)
+)
+AUDIO_BUCKET_NAME = _audio_settings_source.get(
+    "AUDIO_BUCKET_NAME", _default_bucket
+)
+AUDIO_SIGNED_URL_TTL_SECONDS = int(
+    _audio_settings_source.get("AUDIO_SIGNED_URL_TTL_SECONDS", 3600)
+)
+MONTHLY_TTS_CHAR_LIMIT = int(
+    _audio_settings_source.get("MONTHLY_TTS_CHAR_LIMIT", 100000)
+)
+LOCK_STALE_HOURS = int(
+    _audio_settings_source.get("LOCK_STALE_HOURS", 24)
+)
 
 # Ensure DBT_KEY is available as an environment variable if it exists
 if DBT_KEY:
