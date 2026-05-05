@@ -108,19 +108,40 @@ resource "google_project_iam_member" "github_deployer_service_usage_admin" {
   ]
 }
 
-# Service account management for CI is split into two bindings to avoid
-# granting project-wide ``serviceAccountAdmin``:
+# Service account management for CI is split into three bindings to
+# avoid granting project-wide ``serviceAccountAdmin``:
 #
-#  1) ``serviceAccountCreator`` is unconditional because project-level
+#  1) ``serviceAccountViewer`` is unconditional because Terraform
+#     refresh calls ``iam.serviceAccounts.getIamPolicy`` on every
+#     ``google_service_account_iam_member`` resource, and IAM
+#     Conditions using ``resource.name`` do not reliably apply to
+#     that specific permission on service-account resources — so the
+#     scoped ``serviceAccountAdmin`` binding below cannot carry
+#     refresh on its own. ``serviceAccountViewer`` is a pure read
+#     role (get / getIamPolicy / list), so granting it
+#     unconditionally does not widen the CI blast radius.
+#
+#  2) ``serviceAccountCreator`` is unconditional because project-level
 #     ``iam.serviceAccounts.create`` cannot be constrained by a
 #     resource-name IAM condition (the target is the project, not the
 #     new SA). This still does not let CI modify existing SAs.
 #
-#  2) ``serviceAccountAdmin`` is applied conditionally, restricted to
+#  3) ``serviceAccountAdmin`` is applied conditionally, restricted to
 #     the specific SAs this Terraform config manages (github-deployer,
 #     audio-generator, audio-scheduler, appspot). This closes the
 #     "compromised CI → setIamPolicy on appspot → full project
 #     takeover" path that the previous unscoped grant exposed.
+resource "google_project_iam_member" "github_deployer_service_account_viewer" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountViewer"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
+}
+
 resource "google_project_iam_member" "github_deployer_service_account_creator" {
   project = var.project_id
   role    = "roles/iam.serviceAccountCreator"
