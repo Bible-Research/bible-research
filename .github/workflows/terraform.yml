@@ -93,6 +93,33 @@ jobs:
               body: '## Terraform plan\n\n```\n' + plan + '\n```',
             });
 
+      # Bootstrap step: apply IAM bindings for the github-deployer CI
+      # service account *before* the main apply refreshes the rest of
+      # the state. Without this, a PR that simultaneously (a) introduces
+      # a new resource type (e.g. google_cloud_run_v2_job) and (b)
+      # grants the matching read role to github-deployer would fail on
+      # merge: refresh runs as github-deployer, hits a 403 on the brand
+      # new resource, and aborts before the IAM binding that would have
+      # fixed the 403 ever gets applied. Targeting just the github-
+      # deployer IAM resources with -refresh=false sidesteps the
+      # chicken-and-egg without weakening drift detection on the full
+      # apply that follows.
+      - name: Bootstrap github-deployer IAM (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          targets=$(grep -hRE '^resource "(google_project_iam_member|google_service_account_iam_member)" "github_deployer[^"]*"' . \
+            | sed -E 's/.*"(google_[a-z_]+)" "([^"]+)".*/-target=\1.\2/' \
+            | sort -u \
+            | tr '\n' ' ')
+          if [ -z "${targets// }" ]; then
+            echo "No github-deployer IAM resources found; skipping bootstrap."
+            exit 0
+          fi
+          echo "Bootstrapping IAM with targets: $targets"
+          # shellcheck disable=SC2086
+          terraform apply -auto-approve -input=false -lock-timeout=15m -refresh=false $targets
+
       - name: Terraform apply (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve -input=false -lock-timeout=15m
