@@ -56,9 +56,14 @@ resource "google_project_iam_member" "github_deployer_storage_admin" {
   ]
 }
 
-resource "google_project_iam_member" "github_deployer_artifactregistry_writer" {
+# ``admin`` (not just ``writer``) is required because the deploy
+# pipeline creates new Artifact Registry repositories from Terraform
+# (e.g. the ``audio-generator`` repo in artifact_registry.tf). The
+# ``writer`` role can push/pull images but cannot call
+# ``artifactregistry.repositories.create``.
+resource "google_project_iam_member" "github_deployer_artifactregistry_admin" {
   project = var.project_id
-  role    = "roles/artifactregistry.writer"
+  role    = "roles/artifactregistry.admin"
   member  = "serviceAccount:${google_service_account.github_deployer.email}"
 
   depends_on = [

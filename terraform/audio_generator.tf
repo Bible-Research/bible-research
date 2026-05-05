@@ -135,12 +135,16 @@ resource "google_cloud_run_v2_job" "audio_generator" {
 
 # github-deployer needs these additional permissions to run
 # ``gcloud run jobs update audio-generator --image=...`` from the
-# Deploy to App Engine workflow. The serviceAccountUser binding
-# (required to act as the runtime SA) is scoped to the specific
+# Deploy to App Engine workflow, and to manage the IAM policy on the
+# Cloud Run Job (e.g. granting the audio-scheduler SA the Invoker
+# role in scheduler.tf). ``roles/run.admin`` is required over
+# ``roles/run.developer`` because only ``admin`` grants
+# ``run.jobs.setIamPolicy``. The serviceAccountUser binding below
+# (required to act as the runtime SA) is still scoped to the specific
 # ``audio-generator`` SA rather than granted project-wide.
-resource "google_project_iam_member" "github_deployer_run_developer" {
+resource "google_project_iam_member" "github_deployer_run_admin" {
   project = var.project_id
-  role    = "roles/run.developer"
+  role    = "roles/run.admin"
   member  = "serviceAccount:${google_service_account.github_deployer.email}"
 
   depends_on = [
