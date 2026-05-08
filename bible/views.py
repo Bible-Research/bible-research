@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from bible.utils.bible_books import get_dbt_book_id
+from bible.services.google_tts.registry import get_tts_config
 from bible.services.sword.registry import (
     canonical_sword_fileset_id,
     is_sword_fileset,
@@ -191,9 +192,10 @@ class AudioTimestampView(APIView):
 
             if is_sword_fileset(fileset_id):
                 canon = canonical_sword_fileset_id(fileset_id)
+                voice_name = get_tts_config(canon)["voice_name"]
                 try:
                     payload = gcs.read_timestamps_json(
-                        canon, book_id, int(chapter)
+                        canon, book_id, int(chapter), voice_name,
                     )
                 except gcs_exceptions.NotFound:
                     return Response(

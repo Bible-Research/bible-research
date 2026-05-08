@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from bible.services.google_tts.budget import BudgetExceeded, CharBudget
 from bible.services.google_tts.client import QuotaExceeded
+from bible.services.google_tts.registry import get_tts_config
 from bible.services.google_tts.synthesizer import Synthesizer
 from bible.services.storage import gcs
 from bible.services.sword.client import get_default_sword_client
@@ -67,7 +68,12 @@ class Command(BaseCommand):
             fileset_id, cap, already_used, remaining,
         )
 
-        completed = gcs.list_completed_chapters(fileset_id)
+        cfg = get_tts_config(fileset_id)
+        voice_name = cfg["voice_name"]
+
+        completed = gcs.list_completed_chapters(
+            fileset_id, voice_name,
+        )
         pending = [bc for bc in worklist if bc not in completed]
         logger.info(
             "total=%d completed=%d pending=%d",
@@ -125,6 +131,7 @@ class Command(BaseCommand):
                         fileset_id, book_id, chap,
                         artifacts.mp3_bytes,
                         artifacts.timestamps_payload,
+                        voice_name,
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.exception(

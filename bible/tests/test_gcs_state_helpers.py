@@ -184,9 +184,18 @@ def test_signed_audio_url_caches_within_ttl(fake_bucket, monkeypatch):
     # Patch the fake blob used by this test module's _FakeBucket.
     _FakeBlob.generate_signed_url = fake_generate_signed_url
 
-    url1 = gcs.signed_audio_url("LVSGLU8", "JHN", 3, ttl_seconds=300)
-    url2 = gcs.signed_audio_url("LVSGLU8", "JHN", 3, ttl_seconds=300)
-    url3 = gcs.signed_audio_url("LVSGLU8", "JHN", 4, ttl_seconds=300)
+    url1 = gcs.signed_audio_url(
+        "LVSGLU8", "JHN", 3, "lv-LV-Chirp3-HD-Sadachbia",
+        ttl_seconds=300,
+    )
+    url2 = gcs.signed_audio_url(
+        "LVSGLU8", "JHN", 3, "lv-LV-Chirp3-HD-Sadachbia",
+        ttl_seconds=300,
+    )
+    url3 = gcs.signed_audio_url(
+        "LVSGLU8", "JHN", 4, "lv-LV-Chirp3-HD-Sadachbia",
+        ttl_seconds=300,
+    )
 
     # Same chapter -> second call served from cache, no new signing.
     assert url1 == url2

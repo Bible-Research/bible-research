@@ -39,10 +39,16 @@ def get_default_client() -> storage.Client:
 
 
 def chapter_object_paths(
-    fileset_id: str, book_id: str, chapter: int
+    fileset_id: str,
+    book_id: str,
+    chapter: int,
+    voice_name: str,
 ) -> Tuple[str, str]:
     """Return ``(audio_path, timestamps_path)`` for a chapter."""
-    base = f"audio/{fileset_id}/{book_id}/{int(chapter)}"
+    base = (
+        f"audio/{fileset_id}/{voice_name}"
+        f"/{book_id}/{int(chapter)}"
+    )
     return f"{base}_audio.mp3", f"{base}_timestamps.json"
 
 
@@ -51,21 +57,28 @@ def _bucket():
 
 
 def chapter_audio_exists(
-    fileset_id: str, book_id: str, chapter: int
+    fileset_id: str,
+    book_id: str,
+    chapter: int,
+    voice_name: str,
 ) -> bool:
-    audio_path, _ = chapter_object_paths(fileset_id, book_id, chapter)
+    audio_path, _ = chapter_object_paths(
+        fileset_id, book_id, chapter, voice_name,
+    )
     return _bucket().blob(audio_path).exists()
 
 
-def list_completed_chapters(fileset_id: str) -> Set[Tuple[str, int]]:
+def list_completed_chapters(
+    fileset_id: str, voice_name: str,
+) -> Set[Tuple[str, int]]:
     """Return the set of ``(book_id, chapter)`` pairs that have **both**
     ``_audio.mp3`` and ``_timestamps.json`` present."""
-    prefix = f"audio/{fileset_id}/"
+    prefix = f"audio/{fileset_id}/{voice_name}/"
     audio: Set[Tuple[str, int]] = set()
     json_done: Set[Tuple[str, int]] = set()
 
     for blob in _bucket().list_blobs(prefix=prefix):
-        # name = audio/<fileset>/<BOOK>/<CHAPTER>_audio.mp3
+        # name = audio/<fileset>/<voice>/<BOOK>/<CHAPTER>_audio.mp3
         rest = blob.name[len(prefix):]
         try:
             book_id, fname = rest.split("/", 1)
@@ -93,10 +106,13 @@ def upload_chapter_artifacts(
     chapter: int,
     mp3_bytes: bytes,
     timestamps_payload: dict,
+    voice_name: str,
 ) -> None:
     """Write timestamps JSON first, then MP3, so an MP3 always implies a
     JSON exists (resume logic depends on this)."""
-    audio_path, json_path = chapter_object_paths(fileset_id, book_id, chapter)
+    audio_path, json_path = chapter_object_paths(
+        fileset_id, book_id, chapter, voice_name,
+    )
     bucket = _bucket()
 
     # Embed the MP3 size at generation time so the read path can
@@ -122,9 +138,12 @@ def upload_chapter_artifacts(
 
 
 def read_timestamps_json(
-    fileset_id: str, book_id: str, chapter: int
+    fileset_id: str, book_id: str, chapter: int,
+    voice_name: str,
 ) -> dict:
-    _, json_path = chapter_object_paths(fileset_id, book_id, chapter)
+    _, json_path = chapter_object_paths(
+        fileset_id, book_id, chapter, voice_name,
+    )
     blob = _bucket().blob(json_path)
     return json.loads(blob.download_as_bytes())
 
@@ -144,6 +163,7 @@ def signed_audio_url(
     fileset_id: str,
     book_id: str,
     chapter: int,
+    voice_name: str,
     ttl_seconds: Optional[int] = None,
 ) -> str:
     """Return a V4 signed URL for the chapter's MP3.
@@ -151,21 +171,23 @@ def signed_audio_url(
     Works without a JSON key on App Engine / Cloud Run by passing the
     runtime SA's email + an OAuth access token; GCS asks IAM to sign.
 
-    The URL is cached per ``(fileset_id, book_id, chapter)`` until
-    ``_SIGNED_URL_SAFETY_MARGIN_SECONDS`` before its real expiry so
-    back-to-back requests for the same chapter don't each trigger an
-    IAM signBlob call."""
+    The URL is cached per ``(fileset_id, voice_name, book_id, chapter)``
+    until ``_SIGNED_URL_SAFETY_MARGIN_SECONDS`` before its real expiry
+    so back-to-back requests for the same chapter don't each trigger
+    an IAM signBlob call."""
     if ttl_seconds is None:
         ttl_seconds = settings.AUDIO_SIGNED_URL_TTL_SECONDS
 
-    cache_key = (fileset_id, book_id, chapter)
+    cache_key = (fileset_id, voice_name, book_id, chapter)
     now = time.monotonic()
     with _signed_url_cache_lock:
         cached = _signed_url_cache.get(cache_key)
         if cached is not None and cached[1] > now:
             return cached[0]
 
-    audio_path, _ = chapter_object_paths(fileset_id, book_id, chapter)
+    audio_path, _ = chapter_object_paths(
+        fileset_id, book_id, chapter, voice_name,
+    )
     blob = _bucket().blob(audio_path)
 
     credentials, _ = google.auth.default(

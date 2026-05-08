@@ -16,9 +16,15 @@ def auth_client(db):
     return c
 
 
+@patch("bible.views.get_tts_config")
 @patch("bible.views.gcs.read_timestamps_json")
 @pytest.mark.django_db
-def test_sword_timestamps_served_from_gcs(read_ts, auth_client):
+def test_sword_timestamps_served_from_gcs(
+    read_ts, tts_cfg, auth_client,
+):
+    tts_cfg.return_value = {
+        "voice_name": "lv-LV-Chirp3-HD-Sadachbia",
+    }
     read_ts.return_value = {
         "duration_seconds": 60.0,
         "data": [

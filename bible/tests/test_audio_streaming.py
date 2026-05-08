@@ -16,14 +16,18 @@ def auth_client(db):
     return c
 
 
+@patch("bible.serializers.get_tts_config")
 @patch("bible.serializers.gcs.read_timestamps_json")
 @patch("bible.serializers.gcs.signed_audio_url")
 @patch("bible.serializers.gcs.chapter_audio_exists")
 @patch("bible.serializers.gcs.get_default_client")
 @pytest.mark.django_db
 def test_audio_response_returns_signed_url(
-    get_client, exists, signed, read_ts, auth_client,
+    get_client, exists, signed, read_ts, tts_cfg, auth_client,
 ):
+    tts_cfg.return_value = {
+        "voice_name": "lv-LV-Chirp3-HD-Sadachbia",
+    }
     exists.return_value = True
     signed.return_value = "https://signed.example/audio.mp3"
     read_ts.return_value = {"duration_seconds": 412.87, "data": []}
