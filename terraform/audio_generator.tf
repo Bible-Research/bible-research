@@ -22,6 +22,20 @@ resource "google_secret_manager_secret_iam_member" "audio_generator_django_secre
   member    = "serviceAccount:${google_service_account.audio_generator.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "audio_generator_dbt_key" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.app["DBT_KEY"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.audio_generator.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "audio_generator_esv_key" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.app["ESV_KEY"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.audio_generator.email}"
+}
+
 resource "google_cloud_run_v2_job" "audio_generator" {
   name     = "audio-generator"
   location = local.app_engine_region
@@ -121,6 +135,8 @@ resource "google_cloud_run_v2_job" "audio_generator" {
   depends_on = [
     google_secret_manager_secret_iam_member.audio_generator_db_url,
     google_secret_manager_secret_iam_member.audio_generator_django_secret,
+    google_secret_manager_secret_iam_member.audio_generator_dbt_key,
+    google_secret_manager_secret_iam_member.audio_generator_esv_key,
   ]
 
   lifecycle {
