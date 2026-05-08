@@ -85,6 +85,7 @@ WSGI_APPLICATION = 'bible_research.wsgi.application'
 IS_GCP_ENVIRONMENT = (
     os.environ.get('GAE_APPLICATION') is not None
     or os.environ.get('K_SERVICE') is not None
+    or os.environ.get('CLOUD_RUN_JOB') is not None
 )
 IS_VERCEL = os.environ.get('VERCEL') == '1'
 
