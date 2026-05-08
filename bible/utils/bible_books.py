@@ -45,9 +45,35 @@ _BIBLE_BOOKS = [
 # Generate derived data structures from the single source
 DBT_BOOK_NAME_TO_ID = {name: code for name, code, _ in _BIBLE_BOOKS}
 DBT_ID_TO_PYSWORD_BOOK = {code: name for name, code, _ in _BIBLE_BOOKS}
-BOOK_CODE_TO_TESTAMENT = {code: testament for _, code, testament in _BIBLE_BOOKS}
-OLD_TESTAMENT_BOOKS = {code for _, code, t in _BIBLE_BOOKS if t == 'OT'}
-NEW_TESTAMENT_BOOKS = {code for _, code, t in _BIBLE_BOOKS if t == 'NT'}
+BOOK_CODE_TO_TESTAMENT = {
+    code: testament for _, code, testament in _BIBLE_BOOKS
+}
+OLD_TESTAMENT_BOOKS = {
+    code for _, code, t in _BIBLE_BOOKS if t == 'OT'
+}
+NEW_TESTAMENT_BOOKS = {
+    code for _, code, t in _BIBLE_BOOKS if t == 'NT'
+}
+
+
+_ROMAN_TO_ARABIC = {'i': '1', 'ii': '2', 'iii': '3'}
+
+
+def normalize_sword_book_name(name: str) -> str:
+    """Normalise a SWORD module book name to the canonical
+    lowercase form used in ``_BIBLE_BOOKS``.
+
+    Handles Roman-numeral prefixes (``I Samuel`` → ``1 samuel``)
+    and alternate names (``Revelation of John`` → ``revelation``).
+    """
+    normalized = ' '.join(name.lower().strip().split())
+    parts = normalized.split()
+    if parts and parts[0] in _ROMAN_TO_ARABIC:
+        parts[0] = _ROMAN_TO_ARABIC[parts[0]]
+    normalized = ' '.join(parts)
+    if normalized == 'revelation of john':
+        normalized = 'revelation'
+    return normalized
 
 
 def get_pysword_book_name(book_id):

@@ -6,7 +6,11 @@ from typing import Any, Dict, List, Tuple
 
 from pysword.modules import SwordModules
 
-from bible.utils.bible_books import _BIBLE_BOOKS, get_pysword_book_name
+from bible.utils.bible_books import (
+    _BIBLE_BOOKS,
+    get_pysword_book_name,
+    normalize_sword_book_name,
+)
 
 from .registry import (
     SWORD_MODULES_DIR,
@@ -124,7 +128,8 @@ class SwordClient:
         out: List[Tuple[str, int]] = []
         for _testament, books in bible.get_structure().get_books().items():
             for book in books:
-                book_id = name_to_id.get(book.name.lower())
+                norm = normalize_sword_book_name(book.name)
+                book_id = name_to_id.get(norm)
                 if book_id is None:
                     logger.warning(
                         "SWORD module %s book %r has no book_id "
@@ -146,8 +151,16 @@ class SwordClient:
                 "language": meta["language"],
                 "iso": meta["language_iso"],
                 "filesets": [
-                    {"id": fid, "type": "text_plain", "size": "C"},
-                    {"id": fid, "type": "audio", "size": "C"},
+                    {
+                        "id": fid,
+                        "type": "text_plain",
+                        "size": "C",
+                    },
+                    {
+                        "id": meta.get("audio_fileset_id", fid),
+                        "type": "audio",
+                        "size": "C",
+                    },
                 ],
             })
         return out

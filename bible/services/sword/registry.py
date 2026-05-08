@@ -17,12 +17,17 @@ SWORD_TRANSLATIONS = {
         "language": "Latvian",
         "language_iso": "lvs",  # ISO 639-3
         "license": "Public Domain",
+        # Audio fileset id follows DBT convention:
+        #   {base_id}{size}{version}{type}
+        #   C = Complete, 1 = version, DA = Digital Audio
+        "audio_fileset_id": "LVSGLU8C1DA",
     },
 }
 
 
 def canonical_sword_fileset_id(fileset_id: str) -> str | None:
-    """Return the registry key (e.g. LVSGLU8) for a fileset id or abbr (e.g. GLU8)."""
+    """Return the registry key (e.g. LVSGLU8) for a fileset id,
+    audio fileset id (e.g. LVSGLU8C1DA), or abbr (e.g. GLU8)."""
     if not fileset_id:
         return None
     key = fileset_id.strip().upper()
@@ -30,6 +35,8 @@ def canonical_sword_fileset_id(fileset_id: str) -> str | None:
         return key
     for sfid, meta in SWORD_TRANSLATIONS.items():
         if meta["abbr"].upper() == key:
+            return sfid
+        if meta.get("audio_fileset_id", "").upper() == key:
             return sfid
     return None
 
