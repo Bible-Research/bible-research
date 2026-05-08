@@ -159,6 +159,18 @@ resource "google_cloud_run_v2_job" "audio_generator" {
   }
 }
 
+# Required to create/manage Cloud Scheduler jobs (scheduler.tf).
+resource "google_project_iam_member" "github_deployer_scheduler_admin" {
+  project = var.project_id
+  role    = "roles/cloudscheduler.admin"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+
+  depends_on = [
+    google_project_service.enabled,
+    google_service_account.github_deployer,
+  ]
+}
+
 # github-deployer needs these additional permissions to run
 # ``gcloud run jobs update audio-generator --image=...`` from the
 # Deploy to App Engine workflow, and to manage the IAM policy on the
