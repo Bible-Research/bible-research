@@ -72,22 +72,12 @@ resource "google_project_iam_member" "github_deployer_artifactregistry_admin" {
   ]
 }
 
-resource "google_project_iam_member" "github_deployer_secret_accessor" {
+# ``admin`` (not just ``viewer`` + ``secretAccessor``) is required
+# because Terraform manages ``google_secret_manager_secret_iam_member``
+# resources which call ``secretmanager.secrets.setIamPolicy``.
+resource "google_project_iam_member" "github_deployer_secret_admin" {
   project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.github_deployer.email}"
-
-  depends_on = [
-    google_project_service.enabled,
-    google_service_account.github_deployer,
-  ]
-}
-
-# secretAccessor alone does not include secretmanager.secrets.get; Terraform
-# data.google_secret_manager_secret needs metadata reads for plan/apply.
-resource "google_project_iam_member" "github_deployer_secret_viewer" {
-  project = var.project_id
-  role    = "roles/secretmanager.viewer"
+  role    = "roles/secretmanager.admin"
   member  = "serviceAccount:${google_service_account.github_deployer.email}"
 
   depends_on = [
