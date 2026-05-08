@@ -15,6 +15,8 @@ env:
   WIF_PROVIDER: projects/670506724494/locations/global/workloadIdentityPools/github-actions/providers/github
   DEPLOY_SA: github-deployer@bible-research-489314.iam.gserviceaccount.com
   AUDIO_JOB_NAME: audio-generator
+  AUDIO_IMAGE_REPO: audio-generator
+  AUDIO_IMAGE_NAME: audio-generator
 
 jobs:
   deploy:
