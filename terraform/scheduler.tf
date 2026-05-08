@@ -14,8 +14,8 @@ resource "google_cloud_run_v2_job_iam_member" "audio_scheduler_invoker" {
 
 resource "google_cloud_scheduler_job" "monthly_audio_generator" {
   name             = "monthly-audio-generator"
-  description      = "Run audio-generator Cloud Run Job on the 1st of each month."
-  schedule         = "0 3 1 * *"
+  description      = "Run audio-generator Cloud Run Job on the 3rd of each month."
+  schedule         = "0 3 3 * *"
   time_zone        = "Europe/Riga"
   project          = var.project_id
   region           = local.app_engine_region
