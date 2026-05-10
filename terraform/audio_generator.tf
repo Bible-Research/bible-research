@@ -101,7 +101,7 @@ resource "google_cloud_run_v2_job" "audio_generator" {
         }
         env {
           name  = "MONTHLY_TTS_CHAR_LIMIT"
-          value = "500000"
+          value = "450000"
         }
         env {
           name  = "LOCK_STALE_HOURS"
