@@ -14,7 +14,18 @@ import google.auth
 from google.auth.transport.requests import Request
 from google.cloud import storage
 from django.conf import settings
-from rest_framework.exceptions import UnsupportedMediaType
+from rest_framework import status as drf_status
+from rest_framework.exceptions import (
+    APIException,
+    UnsupportedMediaType,
+)
+
+
+class FileTooLarge(APIException):
+    status_code = drf_status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+    default_detail = "File exceeds maximum allowed size."
+    default_code = "file_too_large"
+
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +52,8 @@ def upload_original(
 
     Raises:
         UnsupportedMediaType: content-type not in allowlist.
-        rest_framework.exceptions.ValidationError: file too large.
+        FileTooLarge: file exceeds IMAGE_MAX_BYTES.
     """
-    from rest_framework.exceptions import ValidationError
-
     content_type = getattr(
         django_uploaded_file, "content_type", ""
     ) or ""
@@ -64,14 +73,9 @@ def upload_original(
     django_uploaded_file.seek(0)
 
     if size_bytes > max_bytes:
-        raise ValidationError(
-            {
-                "file": (
-                    f"File too large ({size_bytes} bytes). "
-                    f"Maximum allowed: {max_bytes} bytes."
-                )
-            },
-            code="file_too_large",
+        raise FileTooLarge(
+            f"File too large ({size_bytes} bytes). "
+            f"Maximum allowed: {max_bytes} bytes."
         )
 
     ext = _ALLOWED_EXTENSIONS[content_type]
