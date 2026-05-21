@@ -444,3 +444,211 @@ class CommentViewSetTest(TestCase):
             format='json',
         )
         self.assertEqual(resp.status_code, 400)
+
+
+class CommentCountViewTest(TestCase):
+    """Integration tests for GET /api/v1/comments/counts/."""
+
+    URL = '/api/v1/comments/counts/'
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username='cnt_user',
+            email='cnt@example.com',
+            password='pass',
+        )
+        self.other_user = User.objects.create_user(
+            username='cnt_other',
+            email='cnt_other@example.com',
+            password='pass',
+        )
+        from annotations.models import Tag
+        self.tag = Tag.objects.create(
+            user=self.user,
+            name='TestTag',
+        )
+        self.other_tag = Tag.objects.create(
+            user=self.user,
+            name='OtherTag',
+        )
+        self.client = APIClient()
+
+    def _make_note(self, user, tag=None, public=False):
+        return Note.objects.create(
+            user=user,
+            note_text='note',
+            tag=tag,
+            public=public,
+        )
+
+    def _make_comment(self, note, user=None, deleted=False):
+        return Comment.objects.create(
+            user=user or self.user,
+            note=note,
+            content='' if deleted else 'hi',
+            is_deleted=deleted,
+        )
+
+    def test_happy_path_tag_id(self):
+        """tag_id returns counts for both notes with correct totals."""
+        note1 = self._make_note(self.user, tag=self.tag)
+        note2 = self._make_note(self.user, tag=self.tag)
+        self._make_comment(note1)
+        self._make_comment(note1)
+        self._make_comment(note2)
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL, {'tag_id': self.tag.id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        counts = resp.json()['counts']
+        self.assertEqual(counts[note1.id], 2)
+        self.assertEqual(counts[note2.id], 1)
+
+    def test_happy_path_note_ids(self):
+        """note_ids returns counts only for those IDs."""
+        note1 = self._make_note(self.user)
+        note2 = self._make_note(self.user)
+        note3 = self._make_note(self.user)
+        self._make_comment(note1)
+        self._make_comment(note2)
+        self._make_comment(note2)
+        self.client.force_authenticate(user=self.user)
+        ids = f'{note1.id},{note2.id}'
+        resp = self.client.get(self.URL, {'note_ids': ids})
+        self.assertEqual(resp.status_code, 200)
+        counts = resp.json()['counts']
+        self.assertIn(note1.id, counts)
+        self.assertIn(note2.id, counts)
+        self.assertNotIn(note3.id, counts)
+        self.assertEqual(counts[note1.id], 1)
+        self.assertEqual(counts[note2.id], 2)
+
+    def test_zero_count_present(self):
+        """A note with no comments appears with count 0."""
+        note = self._make_note(self.user, tag=self.tag)
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL, {'tag_id': self.tag.id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        counts = resp.json()['counts']
+        self.assertEqual(counts[note.id], 0)
+
+    def test_soft_deleted_excluded_by_default(self):
+        """Soft-deleted comments are not counted by default."""
+        note = self._make_note(self.user, tag=self.tag)
+        self._make_comment(note)
+        self._make_comment(note, deleted=True)
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL, {'tag_id': self.tag.id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['counts'][note.id], 1)
+
+    def test_include_deleted_true(self):
+        """include_deleted=true counts soft-deleted comments."""
+        note = self._make_note(self.user, tag=self.tag)
+        self._make_comment(note)
+        self._make_comment(note, deleted=True)
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL,
+            {'tag_id': self.tag.id, 'include_deleted': 'true'},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['counts'][note.id], 2)
+
+    def test_visibility_anonymous_only_public(self):
+        """Anonymous users see only public notes."""
+        pub = self._make_note(
+            self.user, tag=self.tag, public=True
+        )
+        priv = self._make_note(
+            self.user, tag=self.tag, public=False
+        )
+        resp = self.client.get(
+            self.URL, {'tag_id': self.tag.id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        counts = resp.json()['counts']
+        self.assertIn(pub.id, counts)
+        self.assertNotIn(priv.id, counts)
+
+    def test_visibility_owner_sees_own_private(self):
+        """An owner sees counts for their own private notes."""
+        priv = self._make_note(
+            self.user, tag=self.tag, public=False
+        )
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL, {'tag_id': self.tag.id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(priv.id, resp.json()['counts'])
+
+    def test_visibility_other_user_private_omitted(self):
+        """Another user's private note is silently omitted (not 403)."""
+        priv = self._make_note(
+            self.other_user, tag=self.tag, public=False
+        )
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL, {'note_ids': priv.id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn(priv.id, resp.json()['counts'])
+
+    def test_validation_neither_filter(self):
+        """Omitting both tag_id and note_ids returns 400."""
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_validation_both_filters(self):
+        """Supplying both tag_id and note_ids returns 400."""
+        note = self._make_note(self.user)
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL,
+            {'tag_id': self.tag.id, 'note_ids': note.id},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_validation_note_ids_over_cap(self):
+        """note_ids list exceeding 200 IDs returns 400."""
+        ids = ','.join([f'NOT{str(i).zfill(15)}' for i in range(201)])
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL, {'note_ids': ids}
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_cross_tag_isolation(self):
+        """Notes tagged differently are not included."""
+        note_a = self._make_note(
+            self.user, tag=self.tag
+        )
+        note_b = self._make_note(
+            self.user, tag=self.other_tag
+        )
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(
+            self.URL, {'tag_id': self.tag.id}
+        )
+        counts = resp.json()['counts']
+        self.assertIn(note_a.id, counts)
+        self.assertNotIn(note_b.id, counts)
+
+    def test_single_query_assertion(self):
+        """The endpoint executes at most 2 DB queries."""
+        note = self._make_note(self.user, tag=self.tag)
+        self._make_comment(note)
+        self.client.force_authenticate(user=self.user)
+        with self.assertNumQueries(2):
+            resp = self.client.get(
+                self.URL, {'tag_id': self.tag.id}
+            )
+        self.assertEqual(resp.status_code, 200)

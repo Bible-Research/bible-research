@@ -12,5 +12,10 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+        'comments/counts/',
+        views.CommentCountView.as_view(),
+        name='comment-counts',
+    ),
     path('', include(router.urls)),
 ]

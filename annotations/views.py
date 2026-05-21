@@ -1,9 +1,14 @@
 import logging
 
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 
 from .models import Tag, Note, Comment
@@ -16,6 +21,22 @@ from .serializers import (
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+NOTE_IDS_CAP = 200
+
+
+def get_accessible_notes_qs(user):
+    """
+    Return a Note queryset scoped to what *user* may see:
+    - Authenticated → own notes ∪ public notes
+    - Anonymous     → public notes only
+    """
+    if user.is_authenticated:
+        return Note.objects.filter(
+            Q(user=user) | Q(public=True)
+        )
+    return Note.objects.filter(public=True)
 
 
 class TagViewSet(viewsets.ModelViewSet):
@@ -266,10 +287,10 @@ class NoteViewSet(viewsets.ModelViewSet):
         if note_pk or tag_id:
             # If specific note or tag is requested,
             # search it in public notes
-            public = True
+            queryset = get_accessible_notes_qs(user)
             logger.debug(
-                "Setting public=True due to note_pk "
-                "or tag_id filter"
+                "Using get_accessible_notes_qs due to "
+                "note_pk or tag_id filter"
             )
         else:
             # Otherwise evaluate if user requested public notes
@@ -283,28 +304,28 @@ class NoteViewSet(viewsets.ModelViewSet):
                 f"public={public}"
             )
 
-        if user.is_authenticated:
-            user_notes = models.Q(user=user)
-            if public:
-                queryset = Note.objects.filter(
-                    user_notes | models.Q(public=True)
-                )
-                logger.debug(
-                    f"Authenticated user {user.username}: "
-                    f"Fetching own notes + public notes"
-                )
+            if user.is_authenticated:
+                user_notes = models.Q(user=user)
+                if public:
+                    queryset = Note.objects.filter(
+                        user_notes | models.Q(public=True)
+                    )
+                    logger.debug(
+                        f"Authenticated user {user.username}: "
+                        f"Fetching own notes + public notes"
+                    )
+                else:
+                    queryset = Note.objects.filter(user_notes)
+                    logger.debug(
+                        f"Authenticated user {user.username}: "
+                        f"Fetching only own notes"
+                    )
             else:
-                queryset = Note.objects.filter(user_notes)
+                queryset = Note.objects.filter(public=public)
                 logger.debug(
-                    f"Authenticated user {user.username}: "
-                    f"Fetching only own notes"
+                    "Unauthenticated user: "
+                    "Fetching public notes only"
                 )
-        else:
-            queryset = Note.objects.filter(public=public)
-            logger.debug(
-                "Unauthenticated user: "
-                "Fetching public notes only"
-            )
 
         if tag_id:
             queryset = queryset.filter(tag_id=tag_id)
@@ -438,3 +459,126 @@ class CommentViewSet(viewsets.ModelViewSet):
         instance.is_deleted = True
         instance.content = ''
         instance.save(update_fields=['is_deleted', 'content'])
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name='tag_id',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description=(
+                'Return counts for every accessible note '
+                'carrying this tag. Mutually exclusive '
+                'with note_ids.'
+            ),
+            required=False,
+        ),
+        OpenApiParameter(
+            name='note_ids',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description=(
+                'Comma-separated note PKs (max 200). '
+                'Mutually exclusive with tag_id.'
+            ),
+            required=False,
+        ),
+        OpenApiParameter(
+            name='include_deleted',
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            description=(
+                'When true, soft-deleted comments are '
+                'included in the count. Default false.'
+            ),
+            required=False,
+        ),
+    ],
+    responses={
+        200: {
+            'type': 'object',
+            'properties': {
+                'counts': {
+                    'type': 'object',
+                    'additionalProperties': {'type': 'integer'},
+                    'example': {
+                        'NOT0123': 5,
+                        'NOT0456': 0,
+                    },
+                },
+            },
+        }
+    },
+)
+class CommentCountView(APIView):
+    """
+    GET /api/v1/comments/counts/
+
+    Returns the number of (non-deleted) comments per Note.
+    Exactly one of tag_id or note_ids must be supplied.
+    """
+
+    def get(self, request):
+        params = request.query_params
+        tag_id = params.get('tag_id')
+        note_ids_raw = params.get('note_ids')
+        include_deleted = (
+            params.get('include_deleted', 'false').lower()
+            == 'true'
+        )
+
+        has_tag = bool(tag_id)
+        has_ids = bool(note_ids_raw)
+
+        if has_tag and has_ids:
+            raise ValidationError(
+                'Provide either tag_id or note_ids, not both.'
+            )
+        if not has_tag and not has_ids:
+            raise ValidationError(
+                'One of tag_id or note_ids is required.'
+            )
+
+        note_ids = []
+        if has_ids:
+            raw_parts = [
+                p.strip() for p in note_ids_raw.split(',')
+                if p.strip()
+            ]
+            if len(raw_parts) > NOTE_IDS_CAP:
+                raise ValidationError(
+                    f'note_ids may contain at most '
+                    f'{NOTE_IDS_CAP} IDs.'
+                )
+            note_ids = raw_parts
+
+        notes_qs = get_accessible_notes_qs(request.user)
+
+        if has_tag:
+            notes_qs = notes_qs.filter(tag_id=tag_id)
+        else:
+            notes_qs = notes_qs.filter(id__in=note_ids)
+
+        count_filter = (
+            Q()
+            if include_deleted
+            else Q(comments__is_deleted=False)
+        )
+        rows = (
+            notes_qs
+            .annotate(
+                comment_count=Count(
+                    'comments',
+                    filter=count_filter,
+                ),
+            )
+            .values_list('id', 'comment_count')
+        )
+
+        counts = {note_id: cnt for note_id, cnt in rows}
+        logger.info(
+            f"CommentCountView returning counts for "
+            f"{len(counts)} notes"
+        )
+        return Response({'counts': counts})
