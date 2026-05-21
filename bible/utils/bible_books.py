@@ -44,7 +44,6 @@ _BIBLE_BOOKS = [
 
 # Generate derived data structures from the single source
 DBT_BOOK_NAME_TO_ID = {name: code for name, code, _ in _BIBLE_BOOKS}
-DBT_ID_TO_PYSWORD_BOOK = {code: name for name, code, _ in _BIBLE_BOOKS}
 BOOK_CODE_TO_TESTAMENT = {
     code: testament for _, code, testament in _BIBLE_BOOKS
 }
@@ -74,12 +73,6 @@ def normalize_sword_book_name(name: str) -> str:
     if normalized == 'revelation of john':
         normalized = 'revelation'
     return normalized
-
-
-def get_pysword_book_name(book_id):
-    """Convert a DBT book id (e.g. 'JHN') to the lowercase English name
-    pysword expects (e.g. 'john'). Returns None if unknown."""
-    return DBT_ID_TO_PYSWORD_BOOK.get(book_id.upper())
 
 
 def get_dbt_book_id(book_name):

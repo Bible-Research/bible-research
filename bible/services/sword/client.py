@@ -8,7 +8,6 @@ from pysword.modules import SwordModules
 
 from bible.utils.bible_books import (
     _BIBLE_BOOKS,
-    get_pysword_book_name,
     normalize_sword_book_name,
 )
 
@@ -31,6 +30,8 @@ class SwordClient:
         self._lock = threading.Lock()
         # fileset_id -> (SwordModules, SwordBible)
         self._cache: Dict[str, tuple] = {}
+        # fileset_id -> {book_id: pysword book.name}
+        self._book_name_cache: Dict[str, Dict[str, str]] = {}
 
     def _load(self, fileset_id: str):
         canon = canonical_sword_fileset_id(fileset_id)
@@ -63,6 +64,36 @@ class SwordClient:
             )
             return self._cache[fileset_id]
 
+    def _get_book_name_map(self, canon: str) -> Dict[str, str]:
+        """Return a ``{book_id: pysword book.name}`` map for the given
+        (already-canonical) fileset. pysword's ``bible.get(books=[...])``
+        only accepts the module's own canonical book name (e.g.
+        ``"I Kings"``), its OSIS name (``"1Kgs"``), or its preferred
+        abbreviation — it will NOT match the lowercase English form
+        stored in ``_BIBLE_BOOKS`` (``"1 kings"``). Resolve the DBT
+        book_id via the module's own structure so every book (including
+        Roman-numeral-prefixed ones like 1/2 Kings and the Johannine
+        Revelation) round-trips correctly."""
+        cached = self._book_name_cache.get(canon)
+        if cached is not None:
+            return cached
+        _modules, bible = self._load(canon)
+        name_to_id = {
+            name.lower(): code for name, code, _ in _BIBLE_BOOKS
+        }
+        mapping: Dict[str, str] = {}
+        for _testament, books in (
+            bible.get_structure().get_books().items()
+        ):
+            for book in books:
+                norm = normalize_sword_book_name(book.name)
+                book_id = name_to_id.get(norm)
+                if book_id is None:
+                    continue
+                mapping[book_id] = book.name
+        self._book_name_cache[canon] = mapping
+        return mapping
+
     def get_chapter_verses(
         self, fileset_id: str, book_id: str, chapter: int
     ) -> List[Dict[str, Any]]:
@@ -73,9 +104,13 @@ class SwordClient:
             raise ValueError(f"Unknown SWORD fileset: {fileset_id!r}")
         _modules, bible = self._load(canon)
 
-        pysword_book = get_pysword_book_name(book_id)
+        pysword_book = self._get_book_name_map(canon).get(
+            book_id.upper()
+        )
         if not pysword_book:
-            raise ValueError(f"Unknown book id: {book_id}")
+            raise ValueError(
+                f"Book {book_id} not present in fileset {canon}"
+            )
 
         verses: List[Dict[str, Any]] = []
         verse_num = 1
