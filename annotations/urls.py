@@ -10,12 +10,28 @@ router.register(
     views.CommentViewSet,
     basename='comment',
 )
+router.register(
+    r'notes/(?P<note_pk>[^/.]+)/images',
+    views.NoteImageViewSet,
+    basename='note-image',
+)
+router.register(
+    r'notes/(?P<note_pk>[^/.]+)/comments'
+    r'/(?P<comment_pk>[^/.]+)/images',
+    views.CommentImageViewSet,
+    basename='comment-image',
+)
 
 urlpatterns = [
     path(
         'comments/counts/',
         views.CommentCountView.as_view(),
         name='comment-counts',
+    ),
+    path(
+        'images/<str:image_pk>/',
+        views.ImageDestroyView.as_view(),
+        name='image-destroy',
     ),
     path('', include(router.urls)),
 ]

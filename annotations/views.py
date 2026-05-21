@@ -2,22 +2,25 @@ import logging
 
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from rest_framework import viewsets
+from rest_framework import viewsets, status as drf_status
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 
-from .models import Tag, Note, Comment
+from .models import Tag, Note, Comment, Image, generate_image_id
 from .serializers import (
     TagSerializer,
     NoteSerializer,
     CommentSerializer,
+    ImageSerializer,
     build_comment_tree,
 )
+from .services.image_storage import upload_original, delete_original
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -200,9 +203,7 @@ class NoteViewSet(viewsets.ModelViewSet):
             f"{user.username if user.is_authenticated else 'Anonymous'}"
         )
 
-        if (user.is_authenticated and
-                instance.user != user):
-            from rest_framework.exceptions import PermissionDenied
+        if user.is_authenticated and instance.user != user:
             logger.warning(
                 f"Permission denied: User {user.username} "
                 f"attempted to update note ID: {instance.id} "
@@ -234,7 +235,6 @@ class NoteViewSet(viewsets.ModelViewSet):
 
         if (user.is_authenticated and
                 instance.user != user):
-            from rest_framework.exceptions import PermissionDenied
             logger.warning(
                 f"Permission denied: User {user.username} "
                 f"attempted to delete note ID: {instance.id} "
@@ -425,9 +425,6 @@ class CommentViewSet(viewsets.ModelViewSet):
         instance = serializer.instance
         user = self.request.user
         if instance.user != user:
-            from rest_framework.exceptions import (
-                PermissionDenied,
-            )
             raise PermissionDenied(
                 "You do not have permission "
                 "to edit this comment."
@@ -445,9 +442,6 @@ class CommentViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
         if instance.user != user:
-            from rest_framework.exceptions import (
-                PermissionDenied,
-            )
             raise PermissionDenied(
                 "You do not have permission "
                 "to delete this comment."
@@ -582,3 +576,180 @@ class CommentCountView(APIView):
             f"{len(counts)} notes"
         )
         return Response({'counts': counts})
+
+
+class NoteImageViewSet(viewsets.GenericViewSet):
+    """
+    Image attachments scoped to a Note.
+
+      GET  /api/v1/notes/{note_pk}/images/
+      POST /api/v1/notes/{note_pk}/images/
+
+    Upload: multipart/form-data with a single 'file' field.
+    Requester must be the note's owner.
+    Read: same accessibility scope as get_accessible_notes_qs.
+    """
+
+    serializer_class = ImageSerializer
+    parser_classes = [MultiPartParser]
+
+    def _get_note(self):
+        return get_object_or_404(
+            Note, pk=self.kwargs['note_pk']
+        )
+
+    def list(self, request, note_pk=None):
+        note = self._get_note()
+        accessible = get_accessible_notes_qs(request.user)
+        if not accessible.filter(pk=note.pk).exists():
+            raise PermissionDenied(
+                "You do not have access to this note."
+            )
+        images = Image.objects.filter(note=note)
+        serializer = ImageSerializer(
+            images, many=True, context={'request': request}
+        )
+        return Response(serializer.data)
+
+    def create(self, request, note_pk=None):
+        note = self._get_note()
+        user = request.user
+        if not user.is_authenticated or note.user != user:
+            raise PermissionDenied(
+                "Only the note's owner may upload images."
+            )
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            raise ValidationError({'file': 'No file provided.'})
+
+        image_id = generate_image_id()
+        gs_uri, size_bytes, content_type = upload_original(
+            image_id, file_obj
+        )
+        image = Image.objects.create(
+            id=image_id,
+            note=note,
+            uploaded_by=user,
+            storage_url=gs_uri,
+            size_bytes=size_bytes,
+            content_type=content_type,
+        )
+        logger.info(
+            "User %s uploaded image %s to note %s",
+            user.username, image.id, note.id,
+        )
+        serializer = ImageSerializer(
+            image, context={'request': request}
+        )
+        return Response(serializer.data, status=201)
+
+
+class CommentImageViewSet(viewsets.GenericViewSet):
+    """
+    Image attachments scoped to a Comment.
+
+      GET  /api/v1/notes/{note_pk}/comments/{comment_pk}/images/
+      POST /api/v1/notes/{note_pk}/comments/{comment_pk}/images/
+
+    Upload: multipart/form-data with a single 'file' field.
+    Requester must be the comment's author.
+    """
+
+    serializer_class = ImageSerializer
+    parser_classes = [MultiPartParser]
+
+    def _get_comment(self):
+        return get_object_or_404(
+            Comment,
+            pk=self.kwargs['comment_pk'],
+            note_id=self.kwargs['note_pk'],
+        )
+
+    def list(self, request, note_pk=None, comment_pk=None):
+        comment = self._get_comment()
+        accessible = get_accessible_notes_qs(request.user)
+        if not accessible.filter(
+            pk=comment.note_id
+        ).exists():
+            raise PermissionDenied(
+                "You do not have access to this comment."
+            )
+        images = Image.objects.filter(comment=comment)
+        serializer = ImageSerializer(
+            images, many=True, context={'request': request}
+        )
+        return Response(serializer.data)
+
+    def create(
+        self, request, note_pk=None, comment_pk=None
+    ):
+        comment = self._get_comment()
+        user = request.user
+        if not user.is_authenticated or comment.user != user:
+            raise PermissionDenied(
+                "Only the comment's author may upload images."
+            )
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            raise ValidationError({'file': 'No file provided.'})
+
+        image_id = generate_image_id()
+        gs_uri, size_bytes, content_type = upload_original(
+            image_id, file_obj
+        )
+        image = Image.objects.create(
+            id=image_id,
+            comment=comment,
+            uploaded_by=user,
+            storage_url=gs_uri,
+            size_bytes=size_bytes,
+            content_type=content_type,
+        )
+        logger.info(
+            "User %s uploaded image %s to comment %s",
+            user.username, image.id, comment.id,
+        )
+        serializer = ImageSerializer(
+            image, context={'request': request}
+        )
+        return Response(serializer.data, status=201)
+
+
+class ImageDestroyView(APIView):
+    """
+    DELETE /api/v1/images/{image_pk}/
+
+    Only the uploader or the parent owner may delete.
+    Hard-delete: DB row removed and GCS object deleted
+    (best-effort).
+    """
+
+    def delete(self, request, image_pk):
+        image = get_object_or_404(Image, pk=image_pk)
+        user = request.user
+
+        is_uploader = image.uploaded_by == user
+        is_note_owner = (
+            image.note is not None
+            and image.note.user == user
+        )
+        is_comment_author = (
+            image.comment is not None
+            and image.comment.user == user
+        )
+
+        if not (is_uploader or is_note_owner or is_comment_author):
+            raise PermissionDenied(
+                "You do not have permission to delete "
+                "this image."
+            )
+
+        storage_url = image.storage_url
+        image_id = image.id
+        image.delete()
+        delete_original(image_id, storage_url)
+        logger.info(
+            "User %s deleted image %s",
+            user.username, image_id,
+        )
+        return Response(status=drf_status.HTTP_204_NO_CONTENT)

@@ -232,6 +232,30 @@ LOCK_STALE_HOURS = int(
     _audio_settings_source.get("LOCK_STALE_HOURS", 24)
 )
 
+_gcp_project = os.environ.get(
+    "GOOGLE_CLOUD_PROJECT", "bible-research-489314"
+)
+IMAGE_BUCKET_ORIGINALS = os.environ.get(
+    "IMAGE_BUCKET_ORIGINALS",
+    f"{_gcp_project}-images-originals",
+)
+IMAGE_BUCKET_THUMBNAILS = os.environ.get(
+    "IMAGE_BUCKET_THUMBNAILS",
+    f"{_gcp_project}-images-thumbnails",
+)
+IMAGE_MAX_BYTES = int(
+    os.environ.get("IMAGE_MAX_BYTES", 10 * 1024 * 1024)
+)
+IMAGE_SIGNED_URL_TTL_SECONDS = int(
+    os.environ.get("IMAGE_SIGNED_URL_TTL_SECONDS", 600)
+)
+IMAGE_ALLOWED_CONTENT_TYPES = (
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+)
+
 # Ensure DBT_KEY is available as an environment variable if it exists
 if DBT_KEY:
     os.environ['DBT_KEY'] = DBT_KEY

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Tag, Note, NoteVerse, Comment
+from .models import Tag, Note, NoteVerse, Comment, Image
 
 
 @admin.register(Tag)
@@ -108,3 +108,25 @@ class CommentAdmin(admin.ModelAdmin):
         }),
     )
     readonly_fields = ('id', 'timestamp')
+
+
+@admin.register(Image)
+class ImageAdmin(admin.ModelAdmin):
+    """
+    Minimal admin for Image — used for debugging and audit.
+    """
+    list_display = (
+        'id',
+        'created_at',
+        'uploaded_by',
+        'note',
+        'comment',
+        'storage_url',
+        'size_bytes',
+    )
+    search_fields = (
+        'id', 'uploaded_by__username', 'storage_url',
+    )
+    list_filter = ('created_at',)
+    raw_id_fields = ('uploaded_by', 'note', 'comment')
+    readonly_fields = ('id', 'created_at')
