@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Tag, Note, NoteVerse
+from .models import Tag, Note, NoteVerse, Comment
 
 
 @admin.register(Tag)
@@ -73,3 +73,38 @@ class NoteVerseAdmin(admin.ModelAdmin):
     raw_id_fields = ('note', 'verse')
 
     readonly_fields = ('created_at',)
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for the Comment model.
+    Surfaces soft-deleted comments so they remain auditable.
+    """
+    list_display = (
+        'id',
+        'user',
+        'note',
+        'parent_comment',
+        'is_deleted',
+        'timestamp',
+    )
+    search_fields = ('content', 'user__username', 'note__id')
+    list_filter = ('is_deleted', 'timestamp')
+    raw_id_fields = ('user', 'note', 'parent_comment')
+
+    fieldsets = (
+        (None, {
+            'fields': (
+                'user', 'note', 'parent_comment', 'content',
+            )
+        }),
+        ('Status', {
+            'fields': ('is_deleted',),
+        }),
+        ('Timestamps', {
+            'fields': ('timestamp',),
+            'classes': ('collapse',),
+        }),
+    )
+    readonly_fields = ('id', 'timestamp')

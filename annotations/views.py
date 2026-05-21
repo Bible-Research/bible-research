@@ -1,13 +1,17 @@
 import logging
 
 from rest_framework import viewsets
+from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.shortcuts import get_object_or_404
 
-from .models import Tag, Note
+from .models import Tag, Note, Comment
 from .serializers import (
     TagSerializer,
-    NoteSerializer
+    NoteSerializer,
+    CommentSerializer,
+    build_comment_tree,
 )
 
 User = get_user_model()
@@ -315,3 +319,122 @@ class NoteViewSet(viewsets.ModelViewSet):
             f"Returning {final_queryset.count()} notes"
         )
         return final_queryset
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for threaded comments on a Note.
+
+    URL pattern (nested under a note):
+      GET    /api/v1/notes/{note_pk}/comments/
+          Returns the full comment tree for the note.
+          Root-level comments are returned with nested
+          'replies' lists. Deleted comments appear as
+          '[deleted]' to preserve thread structure.
+
+      POST   /api/v1/notes/{note_pk}/comments/
+          Create a top-level or reply comment.
+          Pass 'parent_comment' PK to create a reply.
+
+      GET    /api/v1/notes/{note_pk}/comments/{pk}/
+          Retrieve a single comment (flat).
+
+      PATCH  /api/v1/notes/{note_pk}/comments/{pk}/
+          Update a comment's content.
+
+      DELETE /api/v1/notes/{note_pk}/comments/{pk}/
+          Soft-delete: sets is_deleted=True and clears
+          content. Thread structure is preserved.
+
+    N+1 prevention:
+      get_queryset() issues one DB query with
+      select_related('user') for all list and tree
+      operations. build_comment_tree() assembles the
+      hierarchy entirely in Python.
+    """
+
+    serializer_class = CommentSerializer
+    http_method_names = [
+        'get', 'post', 'patch', 'delete', 'head', 'options',
+    ]
+
+    def _get_note(self):
+        """Return the parent Note or raise 404."""
+        return get_object_or_404(
+            Note, pk=self.kwargs['note_pk']
+        )
+
+    def get_queryset(self):
+        """
+        Return all comments for the note in one query.
+        select_related('user') prevents per-comment author
+        lookups during serialization.
+        """
+        note_pk = self.kwargs['note_pk']
+        return (
+            Comment.objects
+            .filter(note_id=note_pk)
+            .select_related('user')
+            .order_by('timestamp')
+        )
+
+    def list(self, request, *args, **kwargs):
+        """Return comments as a nested tree (no N+1)."""
+        queryset = self.get_queryset()
+        tree = build_comment_tree(queryset)
+        logger.info(
+            f"Returning comment tree for note "
+            f"{self.kwargs.get('note_pk')} "
+            f"({len(queryset)} total comments)"
+        )
+        return Response(tree)
+
+    def perform_create(self, serializer):
+        """Inject request user and parent note on create."""
+        note = self._get_note()
+        user = self.request.user
+        logger.info(
+            f"User {user.username} creating comment "
+            f"on note {note.id}"
+        )
+        serializer.save(user=user, note=note)
+
+    def perform_update(self, serializer):
+        """Allow only the comment author to update."""
+        instance = serializer.instance
+        user = self.request.user
+        if instance.user != user:
+            from rest_framework.exceptions import (
+                PermissionDenied,
+            )
+            raise PermissionDenied(
+                "You do not have permission "
+                "to edit this comment."
+            )
+        logger.info(
+            f"User {user.username} updating "
+            f"comment {instance.id}"
+        )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        """
+        Soft-delete: mark as deleted and redact content.
+        The row is retained so child replies remain intact.
+        """
+        user = self.request.user
+        if instance.user != user:
+            from rest_framework.exceptions import (
+                PermissionDenied,
+            )
+            raise PermissionDenied(
+                "You do not have permission "
+                "to delete this comment."
+            )
+        logger.info(
+            f"User {user.username} soft-deleting "
+            f"comment {instance.id}"
+        )
+        instance.is_deleted = True
+        instance.content = ''
+        instance.save(update_fields=['is_deleted', 'content'])

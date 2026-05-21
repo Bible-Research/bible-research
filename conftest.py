@@ -15,10 +15,17 @@ def pytest_configure():
             # A minimal set of settings required for DRF and Django to run
             # tests
             INSTALLED_APPS=[
+                'django.contrib.admin',
                 'django.contrib.auth',
                 'django.contrib.contenttypes',
+                'django.contrib.sessions',
+                'django.contrib.messages',
                 'rest_framework',
+                'rest_framework.authtoken',
+                'drf_spectacular',
                 'bible',
+                'annotations.apps.AnnotationsConfig',
+                'users.apps.UsersConfig',
             ],
             DATABASES={
                 'default': {
@@ -36,8 +43,28 @@ def pytest_configure():
                 'django.contrib.messages.middleware.MessageMiddleware',
                 'django.middleware.clickjacking.XFrameOptionsMiddleware',
             ],
-            # Needed for APIRequestFactory
-            ROOT_URLCONF='bible.urls',
+            TEMPLATES=[{
+                'BACKEND': (
+                    'django.template.backends'
+                    '.django.DjangoTemplates'
+                ),
+                'DIRS': [],
+                'APP_DIRS': True,
+                'OPTIONS': {
+                    'context_processors': [
+                        'django.template.context_processors'
+                        '.debug',
+                        'django.template.context_processors'
+                        '.request',
+                        'django.contrib.auth'
+                        '.context_processors.auth',
+                        'django.contrib.messages'
+                        '.context_processors.messages',
+                    ],
+                },
+            }],
+            # Full URL conf so comment API routes resolve
+            ROOT_URLCONF='bible_research.urls',
             # Suppress warning about default secret key
             SECRET_KEY='a-test-secret-for-pytest',
         )

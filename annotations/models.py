@@ -143,6 +143,96 @@ class Note(models.Model):
         return f"Note (ID: {id_display}): {truncated_text}{ellipsis}"
 
 
+def generate_comment_id():
+    return f"CMNT_{str(uuid.uuid4()).upper().replace('-', '')[:13]}"
+
+
+class Comment(models.Model):
+    """
+    Represents a user comment on a Note, supporting infinite nesting
+    via a self-referencing parent_comment foreign key.
+
+    Soft-deletion (is_deleted=True) preserves reply threads when a
+    parent comment is removed.
+
+    Indexing strategy:
+      - note_id: enables fast lookups of all comments for a given note.
+      - parent_comment_id: enables fast lookups of direct replies to
+        any comment.
+    Both ForeignKey fields carry Django's default db_index=True;
+    Meta.indexes makes the intent explicit for documentation and
+    allows future composite-index extensions.
+    """
+
+    id = models.CharField(
+        max_length=18,
+        default=generate_comment_id,
+        primary_key=True,
+        editable=False,
+        help_text="Unique identifier for the comment."
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='comments',
+        help_text="The user who authored this comment."
+    )
+    note = models.ForeignKey(
+        Note,
+        on_delete=models.CASCADE,
+        related_name='comments',
+        help_text="The root note this comment belongs to."
+    )
+    parent_comment = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='replies',
+        help_text=(
+            "Parent comment for nested replies. "
+            "Null for top-level comments."
+        )
+    )
+    content = models.TextField(
+        help_text="The text content of the comment."
+    )
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When the comment was created."
+    )
+    is_deleted = models.BooleanField(
+        default=False,
+        help_text=(
+            "Soft-deletion flag. Deleted comments are hidden "
+            "but retained so reply threads remain unbroken."
+        )
+    )
+
+    class Meta:
+        verbose_name = "Comment"
+        verbose_name_plural = "Comments"
+        ordering = ['timestamp']
+        indexes = [
+            models.Index(
+                fields=['note_id'],
+                name='comment_note_id_idx'
+            ),
+            models.Index(
+                fields=['parent_comment_id'],
+                name='comment_parent_id_idx'
+            ),
+        ]
+
+    def __str__(self):
+        truncated = self.content[:50]
+        ellipsis = '...' if len(self.content) > 50 else ''
+        return (
+            f"Comment (ID: {self.id[:8]}): "
+            f"{truncated}{ellipsis}"
+        )
+
+
 def generate_note_verse_id():
     return f"NVE{str(uuid.uuid4()).upper().replace('-', '')[:15]}"
 

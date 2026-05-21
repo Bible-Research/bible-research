@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from bible.models import Verse
 from bible.services.dbt.client import get_default_dbt_client
-from .models import Note, NoteVerse, Tag
+from .models import Note, NoteVerse, Tag, Comment
 User = get_user_model()
 
 
@@ -250,3 +250,110 @@ class NoteSerializer(serializers.ModelSerializer):
             representation['tag'] = TagSerializer(instance.tag).data
 
         return representation
+
+
+class CommentAuthorSerializer(serializers.ModelSerializer):
+    """Minimal read-only representation of the comment author."""
+
+    class Meta:
+        model = User
+        fields = ['id', 'username']
+        read_only_fields = ['id', 'username']
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    """
+    Serializes a single Comment for both read and write operations.
+
+    - On write (POST/PATCH): accepts 'content' and optionally
+      'parent_comment' (its PK). 'user' and 'note' are injected
+      by the view.
+    - On read (GET): exposes author info via 'author' and omits
+      internal 'user' FK so clients receive a clean response.
+      The 'replies' field is populated by build_comment_tree and
+      is not part of the model schema.
+
+    N+1 prevention: this serializer is intentionally flat.
+    The view fetches all comments in one query and delegates
+    tree assembly to build_comment_tree().
+    """
+
+    author = CommentAuthorSerializer(
+        source='user',
+        read_only=True
+    )
+    parent_comment = serializers.PrimaryKeyRelatedField(
+        queryset=Comment.objects.all(),
+        allow_null=True,
+        required=False,
+        default=None
+    )
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id',
+            'author',
+            'note_id',
+            'parent_comment',
+            'content',
+            'timestamp',
+            'is_deleted',
+        ]
+        read_only_fields = [
+            'id', 'author', 'note_id', 'timestamp',
+        ]
+
+    def validate_parent_comment(self, value):
+        """Ensure a reply targets a comment on the same note."""
+        if value is None:
+            return value
+        request = self.context.get('request')
+        note_pk = (
+            self.context.get('note_pk') or
+            (request and request.parser_context and
+             request.parser_context.get('kwargs', {})
+             .get('note_pk'))
+        )
+        if note_pk and str(value.note_id) != str(note_pk):
+            raise serializers.ValidationError(
+                "parent_comment must belong to the same note."
+            )
+        return value
+
+
+def build_comment_tree(queryset):
+    """
+    Assemble a flat Comment queryset into a nested tree structure.
+
+    All comments are fetched in a single DB query by the caller.
+    This function performs O(n) work in Python to build the tree,
+    avoiding any additional database round-trips.
+
+    Deleted comments are represented with redacted content so that
+    reply threads remain structurally intact in the response.
+
+    Returns a list of root-level comment dicts, each containing a
+    'replies' list that may itself contain further nested comment
+    dicts.
+    """
+    comment_map = {}
+
+    for comment in queryset:
+        data = CommentSerializer(comment).data
+        if comment.is_deleted:
+            data['content'] = '[deleted]'
+        data['replies'] = []
+        comment_map[comment.id] = data
+
+    roots = []
+    for comment in queryset:
+        node = comment_map[comment.id]
+        if comment.parent_comment_id:
+            parent = comment_map.get(comment.parent_comment_id)
+            if parent is not None:
+                parent['replies'].append(node)
+        else:
+            roots.append(node)
+
+    return roots
