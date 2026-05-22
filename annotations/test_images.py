@@ -7,6 +7,7 @@ import io
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -110,6 +111,32 @@ class ImageModelTest(TestCase):
             ),
         )
         self.assertIn("comment", str(image))
+
+    def test_xor_constraint_rejects_both_parents(self):
+        """CheckConstraint must reject an Image with both
+        a note and a comment set."""
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Image.objects.create(
+                    note=self.note,
+                    comment=self.comment,
+                    uploaded_by=self.user,
+                    storage_url=(
+                        "gs://b/originals/x/source.png"
+                    ),
+                )
+
+    def test_xor_constraint_rejects_no_parents(self):
+        """CheckConstraint must reject an Image with neither
+        a note nor a comment set."""
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Image.objects.create(
+                    uploaded_by=self.user,
+                    storage_url=(
+                        "gs://b/originals/x/source.png"
+                    ),
+                )
 
 
 class UploadOriginalServiceTest(TestCase):
