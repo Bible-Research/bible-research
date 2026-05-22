@@ -59,3 +59,18 @@ output "audio_scheduler_job_name" {
 output "audio_generator_image_base" {
   value = "${google_artifact_registry_repository.audio_generator.location}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.audio_generator.repository_id}/audio-generator"
 }
+
+output "images_originals_bucket" {
+  description = "Name of the GCS bucket holding original image uploads."
+  value       = google_storage_bucket.images_originals.name
+}
+
+output "images_thumbnails_bucket" {
+  description = "Name of the GCS bucket reserved for async-generated thumbnails."
+  value       = google_storage_bucket.images_thumbnails.name
+}
+
+output "thumbnail_worker_sa_email" {
+  description = "Service account email for the future thumbnail worker."
+  value       = google_service_account.thumbnail_worker.email
+}

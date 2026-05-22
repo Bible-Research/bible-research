@@ -14,3 +14,11 @@ variable "github_repo" {
   type    = string
   default = "Bible-Research/bible-research"
 }
+
+# Allowed origins for GCS bucket CORS policy.
+# Override in tfvars or via -var for production deployments.
+variable "cors_origins" {
+  type        = list(string)
+  default     = ["https://bible-research-489314.uc.r.appspot.com"]
+  description = "Origins allowed to fetch signed image URLs directly from GCS."
+}

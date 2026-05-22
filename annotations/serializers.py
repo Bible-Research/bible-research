@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from bible.models import Verse
 from bible.services.dbt.client import get_default_dbt_client
-from .models import Note, NoteVerse, Tag, Comment
+from .models import Note, NoteVerse, Tag, Comment, Image
 User = get_user_model()
 
 
@@ -320,6 +320,51 @@ class CommentSerializer(serializers.ModelSerializer):
                 "parent_comment must belong to the same note."
             )
         return value
+
+
+class ImageSerializer(serializers.ModelSerializer):
+    """
+    Read/write serializer for Image attachments.
+
+    ``signed_url`` is a computed short-lived GET URL served to clients
+    so they never read directly from a public bucket. Generation
+    requires ADC on GCP; in local/test environments it falls back to
+    ``storage_url``.
+    """
+
+    signed_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Image
+        fields = [
+            'id',
+            'storage_url',
+            'signed_url',
+            'content_type',
+            'size_bytes',
+            'comment',
+            'note',
+            'uploaded_by',
+            'created_at',
+        ]
+        read_only_fields = [
+            'id',
+            'storage_url',
+            'signed_url',
+            'content_type',
+            'size_bytes',
+            'uploaded_by',
+            'created_at',
+        ]
+
+    def get_signed_url(self, obj):
+        try:
+            from annotations.services.image_storage import (
+                signed_image_url,
+            )
+            return signed_image_url(obj.id, obj.storage_url)
+        except Exception:
+            return None
 
 
 def build_comment_tree(queryset):

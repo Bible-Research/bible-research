@@ -233,6 +233,106 @@ class Comment(models.Model):
         )
 
 
+def generate_image_id():
+    return f"IMG_{str(uuid.uuid4()).upper().replace('-', '')[:13]}"
+
+
+class Image(models.Model):
+    """
+    Generic image attachment. Belongs to *either* a Note or a Comment
+    (XOR — enforced by a CheckConstraint). The file itself lives in
+    GCS; only the storage URL is persisted here.
+
+    Indexing strategy:
+      - comment_id and note_id each carry Django's default
+        db_index=True, made explicit in Meta.indexes for documentation
+        and so future composite indexes have a clear home.
+    """
+
+    id = models.CharField(
+        max_length=18,
+        default=generate_image_id,
+        primary_key=True,
+        editable=False,
+        help_text="Unique identifier for the image (IMG_…).",
+    )
+    storage_url = models.CharField(
+        max_length=1024,
+        help_text=(
+            "Canonical GCS URI of the original full-resolution file "
+            "(e.g. gs://<bucket>/originals/<image_id>/<filename>)."
+        ),
+    )
+    content_type = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text=(
+            "MIME type captured at upload time (e.g. image/jpeg)."
+        ),
+    )
+    size_bytes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="File size in bytes, captured at upload time.",
+    )
+    comment = models.ForeignKey(
+        Comment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="images",
+        help_text="Comment this image is attached to (nullable).",
+    )
+    note = models.ForeignKey(
+        Note,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="images",
+        help_text="Note this image is attached to (nullable).",
+    )
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_images",
+        help_text="User who uploaded the image.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Image"
+        verbose_name_plural = "Images"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["comment_id"],
+                name="image_comment_id_idx",
+            ),
+            models.Index(
+                fields=["note_id"],
+                name="image_note_id_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                name="image_exactly_one_parent",
+                check=(
+                    Q(comment__isnull=False, note__isnull=True)
+                    | Q(comment__isnull=True, note__isnull=False)
+                ),
+            ),
+        ]
+
+    def __str__(self):
+        parent = (
+            f"comment {self.comment_id}"
+            if self.comment_id
+            else f"note {self.note_id}"
+        )
+        return f"Image (ID: {self.id[:8]}) on {parent}"
+
+
 def generate_note_verse_id():
     return f"NVE{str(uuid.uuid4()).upper().replace('-', '')[:15]}"
 

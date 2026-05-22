@@ -155,6 +155,7 @@ resource "google_project_iam_member" "github_deployer_service_account_admin_scop
       resource.name.endsWith("/serviceAccounts/audio-generator@${var.project_id}.iam.gserviceaccount.com") ||
       resource.name.endsWith("/serviceAccounts/audio-scheduler@${var.project_id}.iam.gserviceaccount.com") ||
       resource.name.endsWith("/serviceAccounts/github-deployer@${var.project_id}.iam.gserviceaccount.com") ||
+      resource.name.endsWith("/serviceAccounts/thumbnail-worker@${var.project_id}.iam.gserviceaccount.com") ||
       resource.name.endsWith("/serviceAccounts/${local.appspot_email}")
     EOT
   }
