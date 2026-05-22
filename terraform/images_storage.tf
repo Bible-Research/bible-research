@@ -17,6 +17,13 @@ resource "google_storage_bucket" "images_originals" {
     condition { age = 7 }
     action    { type = "AbortIncompleteMultipartUpload" }
   }
+
+  cors {
+    origin          = var.cors_origins
+    method          = ["GET"]
+    response_header = ["Content-Type"]
+    max_age_seconds = 3600
+  }
 }
 
 # Thumbnails: written later by an async worker. Empty in this
@@ -31,6 +38,13 @@ resource "google_storage_bucket" "images_thumbnails" {
   lifecycle_rule {
     condition { age = 7 }
     action    { type = "AbortIncompleteMultipartUpload" }
+  }
+
+  cors {
+    origin          = var.cors_origins
+    method          = ["GET"]
+    response_header = ["Content-Type"]
+    max_age_seconds = 3600
   }
 }
 

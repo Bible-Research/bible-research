@@ -364,7 +364,7 @@ class ImageSerializer(serializers.ModelSerializer):
             )
             return signed_image_url(obj.id, obj.storage_url)
         except Exception:
-            return obj.storage_url
+            return None
 
 
 def build_comment_tree(queryset):

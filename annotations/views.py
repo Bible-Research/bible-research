@@ -5,8 +5,10 @@ from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets, status as drf_status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Count, Q
@@ -618,6 +620,17 @@ class NoteImageViewSet(viewsets.GenericViewSet):
             raise PermissionDenied(
                 "Only the note's owner may upload images."
             )
+        max_images = getattr(
+            settings, 'IMAGE_MAX_PER_NOTE', 10
+        )
+        if Image.objects.filter(
+            note=note
+        ).count() >= max_images:
+            raise ValidationError(
+                {'file': (
+                    f'Maximum {max_images} images per note.'
+                )}
+            )
         file_obj = request.FILES.get('file')
         if not file_obj:
             raise ValidationError({'file': 'No file provided.'})
@@ -626,14 +639,18 @@ class NoteImageViewSet(viewsets.GenericViewSet):
         gs_uri, size_bytes, content_type = upload_original(
             image_id, file_obj
         )
-        image = Image.objects.create(
-            id=image_id,
-            note=note,
-            uploaded_by=user,
-            storage_url=gs_uri,
-            size_bytes=size_bytes,
-            content_type=content_type,
-        )
+        try:
+            image = Image.objects.create(
+                id=image_id,
+                note=note,
+                uploaded_by=user,
+                storage_url=gs_uri,
+                size_bytes=size_bytes,
+                content_type=content_type,
+            )
+        except Exception:
+            delete_original(image_id, gs_uri)
+            raise
         logger.info(
             "User %s uploaded image %s to note %s",
             user.username, image.id, note.id,
@@ -689,6 +706,17 @@ class CommentImageViewSet(viewsets.GenericViewSet):
             raise PermissionDenied(
                 "Only the comment's author may upload images."
             )
+        max_images = getattr(
+            settings, 'IMAGE_MAX_PER_COMMENT', 5
+        )
+        if Image.objects.filter(
+            comment=comment
+        ).count() >= max_images:
+            raise ValidationError(
+                {'file': (
+                    f'Maximum {max_images} images per comment.'
+                )}
+            )
         file_obj = request.FILES.get('file')
         if not file_obj:
             raise ValidationError({'file': 'No file provided.'})
@@ -697,14 +725,18 @@ class CommentImageViewSet(viewsets.GenericViewSet):
         gs_uri, size_bytes, content_type = upload_original(
             image_id, file_obj
         )
-        image = Image.objects.create(
-            id=image_id,
-            comment=comment,
-            uploaded_by=user,
-            storage_url=gs_uri,
-            size_bytes=size_bytes,
-            content_type=content_type,
-        )
+        try:
+            image = Image.objects.create(
+                id=image_id,
+                comment=comment,
+                uploaded_by=user,
+                storage_url=gs_uri,
+                size_bytes=size_bytes,
+                content_type=content_type,
+            )
+        except Exception:
+            delete_original(image_id, gs_uri)
+            raise
         logger.info(
             "User %s uploaded image %s to comment %s",
             user.username, image.id, comment.id,
@@ -723,6 +755,8 @@ class ImageDestroyView(APIView):
     Hard-delete: DB row removed and GCS object deleted
     (best-effort).
     """
+
+    permission_classes = [IsAuthenticated]
 
     def delete(self, request, image_pk):
         image = get_object_or_404(Image, pk=image_pk)

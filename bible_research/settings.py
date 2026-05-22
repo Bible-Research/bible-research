@@ -255,6 +255,12 @@ IMAGE_ALLOWED_CONTENT_TYPES = (
     "image/webp",
     "image/gif",
 )
+IMAGE_MAX_PER_NOTE = int(
+    os.environ.get("IMAGE_MAX_PER_NOTE", 10)
+)
+IMAGE_MAX_PER_COMMENT = int(
+    os.environ.get("IMAGE_MAX_PER_COMMENT", 5)
+)
 
 # Ensure DBT_KEY is available as an environment variable if it exists
 if DBT_KEY:

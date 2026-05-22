@@ -188,6 +188,20 @@ class UploadOriginalServiceTest(TestCase):
             "originals/IMG_PATHCHECK00001/source.png",
         )
 
+    def test_spoofed_content_type_raises_415(self):
+        """Non-image bytes with image/ content-type must fail."""
+        from rest_framework.exceptions import (
+            UnsupportedMediaType,
+        )
+        evil = _make_file(
+            content=b"not a real image at all",
+            name="evil.png",
+            content_type="image/png",
+        )
+        with _mock_bucket():
+            with self.assertRaises(UnsupportedMediaType):
+                upload_original("IMG_X", evil)
+
 
 class NoteImageAPITest(TestCase):
     """Integration tests for NoteImageViewSet."""
@@ -286,6 +300,44 @@ class NoteImageAPITest(TestCase):
         resp = self.client.get(self._upload_url())
         self.assertEqual(resp.status_code, 403)
 
+    def test_unauthenticated_list_returns_403(self):
+        resp = self.client.get(self._upload_url())
+        self.assertEqual(resp.status_code, 403)
+
+    def test_unauthenticated_upload_returns_403(self):
+        with _mock_bucket():
+            resp = self.client.post(
+                self._upload_url(),
+                {"file": _make_file()},
+                format="multipart",
+            )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_upload_without_file_returns_400(self):
+        self.client.force_authenticate(user=self.owner)
+        resp = self.client.post(
+            self._upload_url(),
+            {},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_spoofed_content_type_returns_415(self):
+        self.client.force_authenticate(user=self.owner)
+        evil = _make_file(
+            content=b"not a real image at all",
+            name="evil.png",
+            content_type="image/png",
+        )
+        with _mock_bucket():
+            resp = self.client.post(
+                self._upload_url(),
+                {"file": evil},
+                format="multipart",
+            )
+        self.assertEqual(resp.status_code, 415)
+        self.assertEqual(Image.objects.count(), 0)
+
 
 class CommentImageAPITest(TestCase):
     """Integration tests for CommentImageViewSet."""
@@ -375,6 +427,13 @@ class ImageDeleteAPITest(TestCase):
     def _delete_url(self):
         return f"/api/v1/images/{self.image.id}/"
 
+    def test_unauthenticated_delete_returns_401(self):
+        resp = self.client.delete(self._delete_url())
+        self.assertEqual(resp.status_code, 401)
+        self.assertTrue(
+            Image.objects.filter(pk=self.image.id).exists()
+        )
+
     def test_non_owner_delete_returns_403(self):
         self.client.force_authenticate(user=self.other)
         resp = self.client.delete(self._delete_url())
@@ -385,13 +444,15 @@ class ImageDeleteAPITest(TestCase):
 
     def test_owner_delete_removes_row_and_calls_gcs(self):
         self.client.force_authenticate(user=self.owner)
+        mock_blob = MagicMock()
+        mock_gcs_client = MagicMock()
+        mock_gcs_client.bucket.return_value.blob.return_value = (
+            mock_blob
+        )
         with patch(
-            "annotations.services.image_storage"
-            ".storage.Client"
-        ) as MockClient:
-            mock_blob = MagicMock()
-            MockClient.return_value.bucket.return_value\
-                .blob.return_value = mock_blob
+            "annotations.services.image_storage._get_client",
+            return_value=mock_gcs_client,
+        ):
             resp = self.client.delete(self._delete_url())
 
         self.assertEqual(resp.status_code, 204)

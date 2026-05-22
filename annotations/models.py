@@ -256,7 +256,7 @@ class Image(models.Model):
         editable=False,
         help_text="Unique identifier for the image (IMG_…).",
     )
-    storage_url = models.URLField(
+    storage_url = models.CharField(
         max_length=1024,
         help_text=(
             "Canonical GCS URI of the original full-resolution file "
