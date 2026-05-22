@@ -10,12 +10,21 @@ resource "google_storage_bucket" "images_originals" {
   versioning { enabled = true }
 
   lifecycle_rule {
-    condition { with_state = "ARCHIVED", age = 30 }
-    action    { type = "Delete" }
+    condition {
+      with_state = "ARCHIVED"
+      age        = 30
+    }
+    action {
+      type = "Delete"
+    }
   }
   lifecycle_rule {
-    condition { age = 7 }
-    action    { type = "AbortIncompleteMultipartUpload" }
+    condition {
+      age = 7
+    }
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
   }
 
   cors {
@@ -36,8 +45,12 @@ resource "google_storage_bucket" "images_thumbnails" {
   uniform_bucket_level_access = true
 
   lifecycle_rule {
-    condition { age = 7 }
-    action    { type = "AbortIncompleteMultipartUpload" }
+    condition {
+      age = 7
+    }
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
   }
 
   cors {
