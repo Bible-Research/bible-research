@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
             name='Image',
             fields=[
                 ('id', models.CharField(default=annotations.models.generate_image_id, editable=False, help_text='Unique identifier for the image (IMG_…).', max_length=18, primary_key=True, serialize=False)),
-                ('storage_url', models.URLField(help_text='Canonical GCS URI of the original full-resolution file (e.g. gs://<bucket>/originals/<image_id>/<filename>).', max_length=1024)),
+                ('storage_url', models.CharField(help_text='Canonical GCS URI of the original full-resolution file (e.g. gs://<bucket>/originals/<image_id>/<filename>).', max_length=1024)),
                 ('content_type', models.CharField(blank=True, help_text='MIME type captured at upload time (e.g. image/jpeg).', max_length=64)),
                 ('size_bytes', models.PositiveIntegerField(blank=True, help_text='File size in bytes, captured at upload time.', null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
