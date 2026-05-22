@@ -19,12 +19,16 @@ from annotations.services.image_storage import (
 
 User = get_user_model()
 
+# Minimal valid 1x1 PNG (red pixel) produced by Pillow. The bytes
+# here include correct IDAT/IEND CRCs so PIL.verify() accepts them
+# under strict-verifying Pillow (>=11). Do not hand-edit.
 _SMALL_PNG = (
-    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR"
     b"\x00\x00\x00\x01\x00\x00\x00\x01"
     b"\x08\x02\x00\x00\x00\x90wS\xde"
-    b"\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f"
-    b"\x00\x00\x01\x01\x00\x05\x18\xd8N"
+    b"\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0\x00\x00\x03\x01\x01\x00"
+    b"\xc9\xfe\x92\xef"
     b"\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 
@@ -466,9 +470,18 @@ class ImageDeleteAPITest(TestCase):
     def _delete_url(self):
         return f"/api/v1/images/{self.image.id}/"
 
-    def test_unauthenticated_delete_returns_401(self):
+    def test_unauthenticated_delete_is_rejected(self):
+        """Anon DELETE must be rejected and the row preserved.
+
+        DRF returns 401 only when *all* configured authentication
+        classes can challenge (i.e. set WWW-Authenticate). This
+        project enables SessionAuthentication, which has no
+        challenge, so anon requests surface as 403 instead. Either
+        status proves the request was rejected before reaching the
+        view's permission check; both are acceptable.
+        """
         resp = self.client.delete(self._delete_url())
-        self.assertEqual(resp.status_code, 401)
+        self.assertIn(resp.status_code, (401, 403))
         self.assertTrue(
             Image.objects.filter(pk=self.image.id).exists()
         )
