@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from annotations.models import Comment, Image, Note
@@ -143,7 +143,6 @@ class UploadOriginalServiceTest(TestCase):
     """Unit tests for the upload_original service function."""
 
     def setUp(self):
-        from django.test import override_settings
         self._override = override_settings(
             IMAGE_MAX_BYTES=10 * 1024 * 1024,
             IMAGE_BUCKET_ORIGINALS="test-bucket",

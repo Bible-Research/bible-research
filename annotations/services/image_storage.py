@@ -10,6 +10,7 @@ import logging
 import os
 import threading
 import time
+from collections import OrderedDict
 from typing import Optional, Tuple
 
 import google.auth
@@ -85,8 +86,11 @@ def _get_credentials():
 
 
 # ── Signed URL cache (avoids N+1 refreshes in list responses) ─────────
+# Bounded LRU keyed by storage_url; evicts the oldest entry when full
+# so memory cannot grow without bound on long-running workers.
 _SIGNED_URL_SAFETY_MARGIN_SECONDS = 60
-_signed_url_cache: dict = {}
+_SIGNED_URL_CACHE_MAX = 2048
+_signed_url_cache: OrderedDict = OrderedDict()
 _signed_url_cache_lock = threading.Lock()
 
 
@@ -183,6 +187,8 @@ def signed_image_url(
     with _signed_url_cache_lock:
         cached = _signed_url_cache.get(storage_url)
         if cached is not None and cached[1] > now:
+            # Mark as most-recently-used.
+            _signed_url_cache.move_to_end(storage_url)
             return cached[0]
 
     try:
@@ -228,6 +234,9 @@ def signed_image_url(
     )
     with _signed_url_cache_lock:
         _signed_url_cache[storage_url] = (url, expires_at)
+        _signed_url_cache.move_to_end(storage_url)
+        while len(_signed_url_cache) > _SIGNED_URL_CACHE_MAX:
+            _signed_url_cache.popitem(last=False)
     return url
 
 
