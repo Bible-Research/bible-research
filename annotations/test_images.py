@@ -300,9 +300,22 @@ class NoteImageAPITest(TestCase):
         resp = self.client.get(self._upload_url())
         self.assertEqual(resp.status_code, 403)
 
-    def test_unauthenticated_list_returns_403(self):
+    def test_unauthenticated_list_private_note_returns_403(self):
         resp = self.client.get(self._upload_url())
         self.assertEqual(resp.status_code, 403)
+
+    def test_unauthenticated_list_public_note_returns_200(self):
+        """Anon may read images on public notes (plan scope)."""
+        self.note.public = True
+        self.note.save(update_fields=['public'])
+        Image.objects.create(
+            note=self.note,
+            uploaded_by=self.owner,
+            storage_url="gs://b/originals/x/source.png",
+        )
+        resp = self.client.get(self._upload_url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data), 1)
 
     def test_unauthenticated_upload_returns_403(self):
         with _mock_bucket():

@@ -5,7 +5,7 @@ from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets, status as drf_status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.conf import settings
@@ -595,6 +595,14 @@ class NoteImageViewSet(viewsets.GenericViewSet):
     serializer_class = ImageSerializer
     parser_classes = [MultiPartParser]
 
+    def get_permissions(self):
+        # Reads are open: visibility is enforced by
+        # get_accessible_notes_qs (anon may see public notes).
+        # Writes always require authentication.
+        if self.action in ('list', 'retrieve'):
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
     def _get_note(self):
         return get_object_or_404(
             Note, pk=self.kwargs['note_pk']
@@ -674,6 +682,11 @@ class CommentImageViewSet(viewsets.GenericViewSet):
 
     serializer_class = ImageSerializer
     parser_classes = [MultiPartParser]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def _get_comment(self):
         return get_object_or_404(
