@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 
@@ -628,9 +628,14 @@ class NoteImageViewSet(viewsets.GenericViewSet):
             raise PermissionDenied(
                 "Only the note's owner may upload images."
             )
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            raise ValidationError({'file': 'No file provided.'})
         max_images = getattr(
             settings, 'IMAGE_MAX_PER_NOTE', 10
         )
+        # Cheap pre-check before the expensive GCS round-trip.
+        # The authoritative check happens under a row lock below.
         if Image.objects.filter(
             note=note
         ).count() >= max_images:
@@ -639,23 +644,34 @@ class NoteImageViewSet(viewsets.GenericViewSet):
                     f'Maximum {max_images} images per note.'
                 )}
             )
-        file_obj = request.FILES.get('file')
-        if not file_obj:
-            raise ValidationError({'file': 'No file provided.'})
 
         image_id = generate_image_id()
         gs_uri, size_bytes, content_type = upload_original(
             image_id, file_obj
         )
         try:
-            image = Image.objects.create(
-                id=image_id,
-                note=note,
-                uploaded_by=user,
-                storage_url=gs_uri,
-                size_bytes=size_bytes,
-                content_type=content_type,
-            )
+            with transaction.atomic():
+                # Lock the parent row so concurrent uploads cannot
+                # both pass the cap check.
+                locked_note = Note.objects.select_for_update().get(
+                    pk=note.pk
+                )
+                if Image.objects.filter(
+                    note=locked_note
+                ).count() >= max_images:
+                    raise ValidationError(
+                        {'file': (
+                            f'Maximum {max_images} images per note.'
+                        )}
+                    )
+                image = Image.objects.create(
+                    id=image_id,
+                    note=locked_note,
+                    uploaded_by=user,
+                    storage_url=gs_uri,
+                    size_bytes=size_bytes,
+                    content_type=content_type,
+                )
         except Exception:
             delete_original(image_id, gs_uri)
             raise
@@ -719,6 +735,9 @@ class CommentImageViewSet(viewsets.GenericViewSet):
             raise PermissionDenied(
                 "Only the comment's author may upload images."
             )
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            raise ValidationError({'file': 'No file provided.'})
         max_images = getattr(
             settings, 'IMAGE_MAX_PER_COMMENT', 5
         )
@@ -730,23 +749,35 @@ class CommentImageViewSet(viewsets.GenericViewSet):
                     f'Maximum {max_images} images per comment.'
                 )}
             )
-        file_obj = request.FILES.get('file')
-        if not file_obj:
-            raise ValidationError({'file': 'No file provided.'})
 
         image_id = generate_image_id()
         gs_uri, size_bytes, content_type = upload_original(
             image_id, file_obj
         )
         try:
-            image = Image.objects.create(
-                id=image_id,
-                comment=comment,
-                uploaded_by=user,
-                storage_url=gs_uri,
-                size_bytes=size_bytes,
-                content_type=content_type,
-            )
+            with transaction.atomic():
+                locked_comment = (
+                    Comment.objects.select_for_update().get(
+                        pk=comment.pk
+                    )
+                )
+                if Image.objects.filter(
+                    comment=locked_comment
+                ).count() >= max_images:
+                    raise ValidationError(
+                        {'file': (
+                            f'Maximum {max_images} images '
+                            f'per comment.'
+                        )}
+                    )
+                image = Image.objects.create(
+                    id=image_id,
+                    comment=locked_comment,
+                    uploaded_by=user,
+                    storage_url=gs_uri,
+                    size_bytes=size_bytes,
+                    content_type=content_type,
+                )
         except Exception:
             delete_original(image_id, gs_uri)
             raise
