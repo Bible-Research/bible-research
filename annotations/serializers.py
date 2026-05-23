@@ -261,67 +261,6 @@ class CommentAuthorSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'username']
 
 
-class CommentSerializer(serializers.ModelSerializer):
-    """
-    Serializes a single Comment for both read and write operations.
-
-    - On write (POST/PATCH): accepts 'content' and optionally
-      'parent_comment' (its PK). 'user' and 'note' are injected
-      by the view.
-    - On read (GET): exposes author info via 'author' and omits
-      internal 'user' FK so clients receive a clean response.
-      The 'replies' field is populated by build_comment_tree and
-      is not part of the model schema.
-
-    N+1 prevention: this serializer is intentionally flat.
-    The view fetches all comments in one query and delegates
-    tree assembly to build_comment_tree().
-    """
-
-    author = CommentAuthorSerializer(
-        source='user',
-        read_only=True
-    )
-    parent_comment = serializers.PrimaryKeyRelatedField(
-        queryset=Comment.objects.all(),
-        allow_null=True,
-        required=False,
-        default=None
-    )
-
-    class Meta:
-        model = Comment
-        fields = [
-            'id',
-            'author',
-            'note_id',
-            'parent_comment',
-            'content',
-            'timestamp',
-            'is_deleted',
-        ]
-        read_only_fields = [
-            'id', 'author', 'note_id', 'timestamp',
-        ]
-
-    def validate_parent_comment(self, value):
-        """Ensure a reply targets a comment on the same note."""
-        if value is None:
-            return value
-        request = self.context.get('request')
-        note_pk = (
-            self.context.get('note_pk') or
-            (request and request.parser_context and
-             request.parser_context.get('kwargs', {})
-             .get('note_pk'))
-        )
-        if note_pk and str(value.note_id) != str(note_pk):
-            raise serializers.ValidationError(
-                "parent_comment must belong to the same note."
-            )
-        return value
-
-
 class ImageSerializer(serializers.ModelSerializer):
     """
     Read/write serializer for Image attachments.
@@ -367,6 +306,69 @@ class ImageSerializer(serializers.ModelSerializer):
             return None
 
 
+class CommentSerializer(serializers.ModelSerializer):
+    """
+    Serializes a single Comment for both read and write operations.
+
+    - On write (POST/PATCH): accepts 'content' and optionally
+      'parent_comment' (its PK). 'user' and 'note' are injected
+      by the view.
+    - On read (GET): exposes author info via 'author' and omits
+      internal 'user' FK so clients receive a clean response.
+      The 'replies' field is populated by build_comment_tree and
+      is not part of the model schema.
+
+    N+1 prevention: this serializer is intentionally flat.
+    The view fetches all comments in one query and delegates
+    tree assembly to build_comment_tree().
+    """
+
+    author = CommentAuthorSerializer(
+        source='user',
+        read_only=True
+    )
+    images = ImageSerializer(many=True, read_only=True)
+    parent_comment = serializers.PrimaryKeyRelatedField(
+        queryset=Comment.objects.all(),
+        allow_null=True,
+        required=False,
+        default=None
+    )
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id',
+            'author',
+            'note_id',
+            'parent_comment',
+            'content',
+            'timestamp',
+            'is_deleted',
+            'images',
+        ]
+        read_only_fields = [
+            'id', 'author', 'note_id', 'timestamp', 'images',
+        ]
+
+    def validate_parent_comment(self, value):
+        """Ensure a reply targets a comment on the same note."""
+        if value is None:
+            return value
+        request = self.context.get('request')
+        note_pk = (
+            self.context.get('note_pk') or
+            (request and request.parser_context and
+             request.parser_context.get('kwargs', {})
+             .get('note_pk'))
+        )
+        if note_pk and str(value.note_id) != str(note_pk):
+            raise serializers.ValidationError(
+                "parent_comment must belong to the same note."
+            )
+        return value
+
+
 def build_comment_tree(queryset):
     """
     Assemble a flat Comment queryset into a nested tree structure.
@@ -388,6 +390,7 @@ def build_comment_tree(queryset):
         data = CommentSerializer(comment).data
         if comment.is_deleted:
             data['content'] = '[deleted]'
+            data['images'] = []
         data['replies'] = []
         comment_map[comment.id] = data
 
