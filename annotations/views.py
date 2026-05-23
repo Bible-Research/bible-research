@@ -398,6 +398,7 @@ class CommentViewSet(viewsets.ModelViewSet):
             Comment.objects
             .filter(note_id=note_pk)
             .select_related('user')
+            .prefetch_related('images')
             .order_by('timestamp')
         )
 
