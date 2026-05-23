@@ -7,7 +7,8 @@ import io
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
+from django.test.utils import CaptureQueriesContext
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -512,3 +513,136 @@ class ImageDeleteAPITest(TestCase):
             Image.objects.filter(pk=self.image.id).exists()
         )
         mock_blob.delete.assert_called_once()
+
+
+class CommentInlineImagesTest(TestCase):
+    """Tests for images inlined in the comment tree response."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="inline_img_user",
+            email="inline_img@example.com",
+            password="pass",
+        )
+        self.note = Note.objects.create(
+            user=self.user,
+            note_text="Note for inline image tests",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _comments_url(self):
+        return f"/api/v1/notes/{self.note.id}/comments/"
+
+    def _make_comment(self, content="Test comment", parent=None):
+        return Comment.objects.create(
+            user=self.user,
+            note=self.note,
+            content=content,
+            parent_comment=parent,
+        )
+
+    def _make_image(self, comment):
+        return Image.objects.create(
+            comment=comment,
+            uploaded_by=self.user,
+            storage_url=(
+                "gs://test-bucket/originals/x/source.png"
+            ),
+            content_type="image/png",
+            size_bytes=100,
+        )
+
+    @patch(
+        "annotations.services.image_storage.signed_image_url",
+        return_value="https://signed.example.com/img",
+    )
+    def test_inline_images_happy_path(self, _mock_sign):
+        """Comment with 2 images returns images array of length 2."""
+        comment = self._make_comment()
+        self._make_image(comment)
+        self._make_image(comment)
+        resp = self.client.get(self._comments_url())
+        self.assertEqual(resp.status_code, 200)
+        tree = resp.json()
+        self.assertEqual(len(tree), 1)
+        images = tree[0]["images"]
+        self.assertEqual(len(images), 2)
+        for key in (
+            "id", "signed_url", "content_type",
+            "size_bytes", "created_at",
+        ):
+            self.assertIn(key, images[0])
+
+    def test_empty_images_array_for_comment_without_attachments(
+        self,
+    ):
+        """Comment without attachments must have images: []."""
+        self._make_comment()
+        resp = self.client.get(self._comments_url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()[0]["images"], [])
+
+    @patch(
+        "annotations.services.image_storage.signed_image_url",
+        return_value="https://signed.example.com/img",
+    )
+    def test_nested_replies_have_own_images(self, _mock_sign):
+        """Replies include their own images arrays."""
+        root = self._make_comment("Root")
+        reply = self._make_comment("Reply", parent=root)
+        self._make_image(reply)
+        resp = self.client.get(self._comments_url())
+        self.assertEqual(resp.status_code, 200)
+        tree = resp.json()
+        self.assertEqual(tree[0]["images"], [])
+        self.assertEqual(
+            len(tree[0]["replies"][0]["images"]), 1
+        )
+
+    def test_soft_deleted_comment_returns_empty_images(self):
+        """Soft-deleted comment returns images: [] and [deleted]."""
+        comment = self._make_comment()
+        self._make_image(comment)
+        comment.is_deleted = True
+        comment.content = ""
+        comment.save(update_fields=["is_deleted", "content"])
+        resp = self.client.get(self._comments_url())
+        self.assertEqual(resp.status_code, 200)
+        node = resp.json()[0]
+        self.assertEqual(node["content"], "[deleted]")
+        self.assertEqual(node["images"], [])
+
+    def test_query_budget_does_not_grow_with_images(self):
+        """Exactly 1 comment query + 1 images prefetch query,
+        regardless of how many images are attached. Counted by
+        filtering captured SQL to business tables only so that
+        session/device-tracking middleware overhead is excluded.
+        """
+        comment = self._make_comment()
+        for _ in range(3):
+            self._make_image(comment)
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.client.get(self._comments_url())
+        self.assertEqual(resp.status_code, 200)
+        business = [
+            q for q in ctx.captured_queries
+            if '"annotations_comment"' in q['sql']
+            or '"annotations_image"' in q['sql']
+        ]
+        self.assertEqual(len(business), 2)
+
+    def test_write_path_ignores_images_key(self):
+        """POST with an 'images' key in payload is silently ignored;
+        the images field is read-only.
+        """
+        resp = self.client.post(
+            self._comments_url(),
+            {
+                "content": "Test",
+                "images": [{"id": "IMG_FAKE"}],
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["images"], [])
