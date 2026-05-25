@@ -8,7 +8,7 @@ from annotations.serializers import (
     NoteSerializer,
     build_comment_tree,
 )
-from annotations.models import Comment, Note
+from annotations.models import Comment, Note, Tag
 from bible.models import Verse
 
 
@@ -652,3 +652,142 @@ class CommentCountViewTest(TestCase):
                 self.URL, {'tag_id': self.tag.id}
             )
         self.assertEqual(resp.status_code, 200)
+
+
+class BulkNoteCreateTest(TestCase):
+    """Integration tests for POST /api/v1/notes/bulk/."""
+
+    URL = '/api/v1/notes/bulk/'
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username='bulk_user',
+            email='bulk@example.com',
+            password='pass',
+        )
+        self.tag = Tag.objects.create(
+            user=self.user,
+            name='BulkTag',
+        )
+        self.verse, _ = Verse.objects.get_or_create(
+            book='John',
+            chapter=3,
+            verse=16,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_bulk_create_happy_path(self):
+        """POST creates all notes and returns 201."""
+        payload = {
+            'tag_id': self.tag.id,
+            'notes': [
+                {
+                    'note_text': 'First note',
+                    'public': False,
+                    'verse_references': [],
+                },
+                {
+                    'note_text': 'Second note',
+                    'public': True,
+                    'verse_references': [],
+                },
+            ],
+        }
+        resp = self.client.post(
+            self.URL, payload, format='json'
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertEqual(len(data), 2)
+        texts = [n['note_text'] for n in data]
+        self.assertIn('First note', texts)
+        self.assertIn('Second note', texts)
+        self.assertEqual(
+            Note.objects.filter(tag=self.tag).count(), 2
+        )
+
+    def test_bulk_create_missing_verse_returns_400(self):
+        """A non-existent verse reference returns 400."""
+        payload = {
+            'tag_id': self.tag.id,
+            'notes': [
+                {
+                    'note_text': 'Bad verse note',
+                    'verse_references': [
+                        {
+                            'book': 'John',
+                            'chapter': 99,
+                            'verse': 99,
+                        }
+                    ],
+                }
+            ],
+        }
+        resp = self.client.post(
+            self.URL, payload, format='json'
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(
+            Note.objects.filter(tag=self.tag).count(), 0
+        )
+
+    def test_bulk_create_wrong_tag_returns_400(self):
+        """A tag_id belonging to another user returns 400."""
+        User = get_user_model()
+        other_user = User.objects.create_user(
+            username='bulk_other',
+            email='bulk_other@example.com',
+            password='pass',
+        )
+        other_tag = Tag.objects.create(
+            user=other_user,
+            name='OtherBulkTag',
+        )
+        payload = {
+            'tag_id': other_tag.id,
+            'notes': [{'note_text': 'Attempt'}],
+        }
+        resp = self.client.post(
+            self.URL, payload, format='json'
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_bulk_create_empty_notes_returns_400(self):
+        """An empty notes list returns 400."""
+        payload = {
+            'tag_id': self.tag.id,
+            'notes': [],
+        }
+        resp = self.client.post(
+            self.URL, payload, format='json'
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_bulk_create_atomicity(self):
+        """A bad verse in one note prevents all notes from
+        being created (atomicity check)."""
+        payload = {
+            'tag_id': self.tag.id,
+            'notes': [
+                {'note_text': 'Good note', 'verse_references': []},
+                {
+                    'note_text': 'Bad note',
+                    'verse_references': [
+                        {
+                            'book': 'John',
+                            'chapter': 99,
+                            'verse': 99,
+                        }
+                    ],
+                },
+            ],
+        }
+        resp = self.client.post(
+            self.URL, payload, format='json'
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(
+            Note.objects.filter(tag=self.tag).count(), 0
+        )

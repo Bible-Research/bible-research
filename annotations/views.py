@@ -1,6 +1,7 @@
 import logging
 
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+from rest_framework.decorators import action
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets, status as drf_status
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -18,6 +19,7 @@ from .models import Tag, Note, Comment, Image, generate_image_id
 from .serializers import (
     TagSerializer,
     NoteSerializer,
+    BulkNoteCreateSerializer,
     CommentSerializer,
     ImageSerializer,
     build_comment_tree,
@@ -342,6 +344,31 @@ class NoteViewSet(viewsets.ModelViewSet):
             f"Returning {final_queryset.count()} notes"
         )
         return final_queryset
+
+    @action(
+        detail=False, methods=['post'], url_path='bulk'
+    )
+    def bulk_create_notes(self, request):
+        """
+        Bulk-create notes under a single tag.
+        POST /api/v1/notes/bulk/
+        """
+        serializer = BulkNoteCreateSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            notes = serializer.save()
+        output = NoteSerializer(
+            notes,
+            many=True,
+            context=self.get_serializer_context(),
+        )
+        return Response(
+            output.data,
+            status=drf_status.HTTP_201_CREATED,
+        )
 
 
 class CommentViewSet(viewsets.ModelViewSet):
