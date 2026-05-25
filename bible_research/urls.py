@@ -7,6 +7,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 from rest_framework.authtoken.views import obtain_auth_token
+from rest_framework.permissions import AllowAny
 
 urlpatterns = [
     path('', RedirectView.as_view(url='/api/v1/docs/', permanent=False)),
@@ -16,17 +17,26 @@ urlpatterns = [
     path('api/v1/users/', include('users.urls')),
     path('api/token/', obtain_auth_token, name='api_token'),
 
-    # API Schema and Documentation
-    path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
-    # Optional UI:
+    # API Schema and Documentation (public — auth enforced per endpoint)
+    path(
+        'api/v1/schema/',
+        SpectacularAPIView.as_view(permission_classes=[AllowAny]),
+        name='schema'
+    ),
     path(
         'api/v1/docs/',
-        SpectacularSwaggerView.as_view(url_name='schema'),
+        SpectacularSwaggerView.as_view(
+            url_name='schema',
+            permission_classes=[AllowAny],
+        ),
         name='swagger-ui'
     ),
     path(
         'api/v1/redoc/',
-        SpectacularRedocView.as_view(url_name='schema'),
+        SpectacularRedocView.as_view(
+            url_name='schema',
+            permission_classes=[AllowAny],
+        ),
         name='redoc'
     ),
 ]
