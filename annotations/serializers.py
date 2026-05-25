@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from rest_framework import serializers
 from bible.models import Verse
 from bible.services.dbt.client import get_default_dbt_client
@@ -250,6 +251,161 @@ class NoteSerializer(serializers.ModelSerializer):
             representation['tag'] = TagSerializer(instance.tag).data
 
         return representation
+
+
+class BulkNoteItemSerializer(serializers.Serializer):
+    """Represents a single note in a bulk creation request."""
+    note_text = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default='',
+    )
+    public = serializers.BooleanField(
+        required=False,
+        default=False,
+    )
+    verse_references = NoteVerseReferenceSerializer(
+        many=True,
+        required=False,
+        default=list,
+    )
+
+
+class BulkNoteCreateSerializer(serializers.Serializer):
+    """
+    Serializer for bulk note creation under a single tag.
+    POST /api/v1/notes/bulk/
+    """
+    tag_id = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(),
+        help_text="UUID of the tag to assign to all notes.",
+    )
+    notes = BulkNoteItemSerializer(
+        many=True,
+        help_text="List of notes to create.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            if request.user.is_authenticated:
+                self.fields['tag_id'].queryset = (
+                    Tag.objects.filter(user=request.user)
+                )
+            else:
+                try:
+                    guest_user = User.objects.get(
+                        username='guest'
+                    )
+                    self.fields['tag_id'].queryset = (
+                        Tag.objects.filter(user=guest_user)
+                    )
+                except User.DoesNotExist:
+                    self.fields['tag_id'].queryset = (
+                        Tag.objects.none()
+                    )
+
+    def validate_notes(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "At least one note is required."
+            )
+        return value
+
+    def _resolve_verses(self, notes_data):
+        """
+        Batch-fetches all Verse instances referenced across
+        all notes. Returns a dict keyed by
+        (book_lower, chapter, verse).
+        Raises ValidationError for any verse not found.
+        """
+        unique_keys = set()
+        for note_data in notes_data:
+            for ref in note_data.get('verse_references', []):
+                unique_keys.add((
+                    ref['book'].lower(),
+                    ref['chapter'],
+                    ref['verse'],
+                ))
+        if not unique_keys:
+            return {}
+
+        query = Q()
+        for book, chapter, verse in unique_keys:
+            query |= Q(
+                book__iexact=book,
+                chapter=chapter,
+                verse=verse,
+            )
+        fetched = Verse.objects.filter(query)
+        verse_map = {
+            (v.book.lower(), v.chapter, v.verse): v
+            for v in fetched
+        }
+        missing = unique_keys - set(verse_map.keys())
+        if missing:
+            missing_str = ', '.join(
+                f"{b} {c}:{v}"
+                for b, c, v in sorted(missing)
+            )
+            raise serializers.ValidationError(
+                f"Verses not found: {missing_str}. "
+                "Please ensure the verses exist "
+                "in your database."
+            )
+        return verse_map
+
+    def create(self, validated_data):
+        """
+        Bulk-creates all notes and their verse links.
+        Called inside transaction.atomic() by the view.
+        """
+        tag = validated_data['tag_id']
+        notes_data = validated_data['notes']
+        request = self.context.get('request')
+
+        if request and request.user.is_authenticated:
+            user = request.user
+        else:
+            try:
+                user = User.objects.get(username='guest')
+            except User.DoesNotExist:
+                user = None
+
+        verse_map = self._resolve_verses(notes_data)
+
+        note_instances = [
+            Note(
+                note_text=nd.get('note_text', ''),
+                public=nd.get('public', False),
+                tag=tag,
+                user=user,
+            )
+            for nd in notes_data
+        ]
+        Note.objects.bulk_create(note_instances)
+
+        nv_instances = []
+        for note_obj, nd in zip(
+            note_instances, notes_data
+        ):
+            for ref in nd.get('verse_references', []):
+                key = (
+                    ref['book'].lower(),
+                    ref['chapter'],
+                    ref['verse'],
+                )
+                nv_instances.append(
+                    NoteVerse(
+                        note=note_obj,
+                        verse=verse_map[key],
+                    )
+                )
+        if nv_instances:
+            NoteVerse.objects.bulk_create(nv_instances)
+
+        return note_instances
 
 
 class CommentAuthorSerializer(serializers.ModelSerializer):
