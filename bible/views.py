@@ -432,10 +432,23 @@ class BibleSearchView(APIView):
             }
             for v in verse_items
         ]
+        # Prefer the documented top-level 'meta' key; fall back to
+        # Laravel paginator fields embedded in 'verses' alongside
+        # 'data' (the actual b4.dbt.io behaviour).
+        meta = result.get('meta')
+        if not meta:
+            paginator_fields = {
+                k: v for k, v in raw_verses.items()
+                if k != 'data'
+            }
+            meta = (
+                {'pagination': paginator_fields}
+                if paginator_fields else {}
+            )
         return Response({
             'data': {
                 'verses': normalized,
-                'meta': result.get('meta') or {},
+                'meta': meta,
             }
         })
 
