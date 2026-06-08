@@ -328,6 +328,10 @@ class DBTClient:
         """
         Search for text in a specific Bible.
 
+        Uses requests directly instead of the generated
+        API client to avoid a deserialization bug
+        (missing Id model in openapi_client.models).
+
         Args:
             bible_id: Bible ID
             query: Search query
@@ -340,20 +344,33 @@ class DBTClient:
         Returns:
             Dictionary with search results
         """
+        params = kwargs.copy()
+        params['v'] = 4
+        params['key'] = self.api_key
+        params['query'] = query
+        params['fileset_id'] = bible_id
         if limit is not None:
-            kwargs['limit'] = limit
+            params['limit'] = limit
         if page is not None:
-            kwargs['page'] = page
+            params['page'] = page
         if sort_by is not None:
-            kwargs['sort_by'] = sort_by
+            params['sort_by'] = sort_by
         if books is not None:
-            kwargs['books'] = books
-        return self._make_request(
-            self.search_api.v4_text_search,
-            query=query,
-            fileset_id=bible_id,
-            **kwargs
-        )
+            params['books'] = books
+
+        url = f"{self.base_url}/search"
+
+        try:
+            response = self.session.get(
+                url, params=params
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(
+                f"DBT search request error: {e}"
+            )
+            raise
 
 
 _default_client: Optional["DBTClient"] = None

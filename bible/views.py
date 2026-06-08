@@ -367,12 +367,7 @@ class BibleSearchView(APIView):
             limit=limit, page=page,
             sort_by=sort_by, books=books,
         )
-        raw = (
-            result.to_dict()
-            if hasattr(result, 'to_dict')
-            else result
-        )
-        raw_verses = raw.get('verses') or {}
+        raw_verses = result.get('verses') or {}
         verse_items = raw_verses.get('data') or []
         normalized = [
             {
@@ -386,7 +381,7 @@ class BibleSearchView(APIView):
         return Response({
             'data': {
                 'verses': normalized,
-                'meta': raw.get('meta') or {},
+                'meta': result.get('meta') or {},
             }
         })
 

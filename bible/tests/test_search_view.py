@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from rest_framework import status
 from rest_framework.test import APIRequestFactory
 
@@ -40,8 +40,7 @@ def test_dbt_search_proxies_with_params(
     mock_get_client, mock_is_sword, factory
 ):
     """DBT fileset → search() called with limit and books."""
-    mock_result = MagicMock()
-    mock_result.to_dict.return_value = {
+    mock_get_client.return_value.search.return_value = {
         'verses': {
             'data': [
                 {
@@ -54,9 +53,6 @@ def test_dbt_search_proxies_with_params(
         },
         'meta': {'pagination': {'total': 1}},
     }
-    mock_get_client.return_value.search.return_value = (
-        mock_result
-    )
 
     request = factory.get('/fake-url/', {
         'query': 'loved',
