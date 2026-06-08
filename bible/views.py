@@ -1,5 +1,7 @@
 import logging
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from google.api_core import exceptions as gcs_exceptions
 from rest_framework import status
 from rest_framework.response import Response
@@ -290,6 +292,58 @@ class CopyrightView(APIView):
             )
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name='query',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description='Word or phrase to search for.',
+            required=True,
+        ),
+        OpenApiParameter(
+            name='fileset_id',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description=(
+                'DBT or SWORD fileset ID '
+                '(e.g. ENGESV, LVSGLU8).'
+            ),
+            required=True,
+        ),
+        OpenApiParameter(
+            name='limit',
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description='Max results per page (default 15).',
+            required=False,
+        ),
+        OpenApiParameter(
+            name='page',
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description='Result page number (default 1).',
+            required=False,
+        ),
+        OpenApiParameter(
+            name='sort_by',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description='Sort field (DBT only).',
+            required=False,
+        ),
+        OpenApiParameter(
+            name='books',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description=(
+                'Comma-separated USFM book IDs '
+                '(e.g. JHN,ROM).'
+            ),
+            required=False,
+        ),
+    ],
+)
 class BibleSearchView(APIView):
     """
     Search the Bible for a word or phrase.
