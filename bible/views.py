@@ -315,14 +315,22 @@ class CopyrightView(APIView):
             name='limit',
             type=OpenApiTypes.INT,
             location=OpenApiParameter.QUERY,
-            description='Max results per page (default 15).',
+            description=(
+                'Max results per page (default 15). '
+                'Response includes meta.pagination.total_pages '
+                'so callers know how many pages exist.'
+            ),
             required=False,
         ),
         OpenApiParameter(
             name='page',
             type=OpenApiTypes.INT,
             location=OpenApiParameter.QUERY,
-            description='Result page number (default 1).',
+            description=(
+                'Result page number (default 1). '
+                'Increment up to meta.pagination.total_pages '
+                'to retrieve subsequent pages.'
+            ),
             required=False,
         ),
         OpenApiParameter(
@@ -347,6 +355,13 @@ class CopyrightView(APIView):
 class BibleSearchView(APIView):
     """
     Search the Bible for a word or phrase.
+
+    Returns a paginated list of matching verses. The response
+    includes a ``meta.pagination`` object with ``total``,
+    ``count``, ``per_page``, ``current_page``, and
+    ``total_pages`` fields. To retrieve subsequent pages,
+    repeat the request with an incremented ``page`` parameter
+    (e.g. ``?query=Jesus&fileset_id=ENGESV&page=2``).
 
     Query Parameters:
         - query: Word/phrase to search (required)
@@ -432,19 +447,30 @@ class BibleSearchView(APIView):
             }
             for v in verse_items
         ]
-        # Prefer the documented top-level 'meta' key; fall back to
-        # Laravel paginator fields embedded in 'verses' alongside
-        # 'data' (the actual b4.dbt.io behaviour).
-        meta = result.get('meta')
-        if not meta:
-            paginator_fields = {
-                k: v for k, v in raw_verses.items()
-                if k != 'data'
+        # Pagination lives in result['meta'] (documented schema) or
+        # result['verses']['meta'] (observed b4.dbt.io behaviour).
+        # Normalise to a clean { pagination: { ... } } shape and
+        # strip internal DBT 'links' so callers only ever use our
+        # own API to paginate.
+        raw_meta = (
+            result.get('meta')
+            or raw_verses.get('meta')
+            or {}
+        )
+        pagination = raw_meta.get('pagination') or {}
+        meta = {
+            'pagination': {
+                'total': pagination.get('total'),
+                'count': pagination.get('count'),
+                'per_page': pagination.get('per_page'),
+                'current_page': (
+                    pagination.get('current_page')
+                ),
+                'total_pages': (
+                    pagination.get('total_pages')
+                ),
             }
-            meta = (
-                {'pagination': paginator_fields}
-                if paginator_fields else {}
-            )
+        } if pagination else {}
         return Response({
             'data': {
                 'verses': normalized,
