@@ -18,4 +18,9 @@ urlpatterns = [
         views.CopyrightView.as_view(),
         name='bible-copyright'
     ),
+    path(
+        'bible/search/',
+        views.BibleSearchView.as_view(),
+        name='bible-search'
+    ),
 ]

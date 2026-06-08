@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from bible.utils.bible_books import get_dbt_book_id
 from bible.services.google_tts.registry import get_tts_config
+from bible.services.sword.client import get_default_sword_client
 from bible.services.sword.registry import (
     canonical_sword_fileset_id,
     is_sword_fileset,
@@ -287,6 +288,162 @@ class CopyrightView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class BibleSearchView(APIView):
+    """
+    Search the Bible for a word or phrase.
+
+    Query Parameters:
+        - query: Word/phrase to search (required)
+        - fileset_id: DBT or SWORD fileset ID (required)
+        - limit: Max results per page (default 15)
+        - page: Result page number (default 1)
+        - sort_by: Sort field (DBT only)
+        - books: Comma-separated USFM book IDs
+    """
+
+    def get(self, request, format=None):
+        query = request.query_params.get('query')
+        fileset_id = request.query_params.get('fileset_id')
+
+        if not query:
+            return Response(
+                {"error": "query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not fileset_id:
+            return Response(
+                {"error": "fileset_id parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            limit = int(
+                request.query_params.get('limit', 15)
+            )
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "limit must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            page = int(
+                request.query_params.get('page', 1)
+            )
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "page must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sort_by = request.query_params.get('sort_by')
+        books = request.query_params.get('books')
+
+        try:
+            if is_sword_fileset(fileset_id):
+                return self._sword_search(
+                    fileset_id, query, limit, page, books
+                )
+            return self._dbt_search(
+                fileset_id, query, limit, page,
+                sort_by, books,
+            )
+        except Exception as e:
+            logger.exception(
+                "Error in BibleSearchView: %s", e
+            )
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    def _dbt_search(
+        self, fileset_id, query, limit, page, sort_by, books
+    ):
+        dbt_client = get_default_dbt_client()
+        result = dbt_client.search(
+            fileset_id, query,
+            limit=limit, page=page,
+            sort_by=sort_by, books=books,
+        )
+        raw = (
+            result.to_dict()
+            if hasattr(result, 'to_dict')
+            else result
+        )
+        raw_verses = raw.get('verses') or {}
+        verse_items = raw_verses.get('data') or []
+        normalized = [
+            {
+                'book_id': v.get('book_id'),
+                'chapter': v.get('chapter'),
+                'verse_start': v.get('verse_start'),
+                'verse_text': v.get('verse_text'),
+            }
+            for v in verse_items
+        ]
+        return Response({
+            'data': {
+                'verses': normalized,
+                'meta': raw.get('meta') or {},
+            }
+        })
+
+    def _sword_search(
+        self, fileset_id, query, limit, page, books
+    ):
+        sword_client = get_default_sword_client()
+        chapters = sword_client.list_chapters(fileset_id)
+
+        if books:
+            allowed = {
+                b.strip().upper() for b in books.split(',')
+            }
+            chapters = [
+                (b, c) for b, c in chapters
+                if b.upper() in allowed
+            ]
+
+        needle = query.lower()
+        matches = []
+        for book_id, chapter in chapters:
+            try:
+                verses = sword_client.get_chapter_verses(
+                    fileset_id, book_id, chapter
+                )
+            except Exception:
+                continue
+            for v in verses:
+                text = v.get('verse_text', '')
+                if needle in text.lower():
+                    matches.append({
+                        'book_id': book_id,
+                        'chapter': chapter,
+                        'verse_start': v['verse_start'],
+                        'verse_text': text,
+                    })
+
+        total = len(matches)
+        start = (page - 1) * limit
+        page_items = matches[start:start + limit]
+        total_pages = (
+            (total + limit - 1) // limit if limit else 1
+        )
+        return Response({
+            'data': {
+                'verses': page_items,
+                'meta': {
+                    'pagination': {
+                        'total': total,
+                        'count': len(page_items),
+                        'per_page': limit,
+                        'current_page': page,
+                        'total_pages': total_pages,
+                    }
+                },
+            }
+        })
 
 
 class TranslationListView(APIView):

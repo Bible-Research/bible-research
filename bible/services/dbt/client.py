@@ -315,18 +315,39 @@ class DBTClient:
             )
             raise
 
-    def search(self, bible_id: str, query: str, **kwargs) -> Dict[str, Any]:
+    def search(
+        self,
+        bible_id: str,
+        query: str,
+        limit: int = None,
+        page: int = None,
+        sort_by: str = None,
+        books: str = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
         Search for text in a specific Bible.
 
         Args:
             bible_id: Bible ID
             query: Search query
+            limit: Max results per page
+            page: Page number
+            sort_by: Field to sort by
+            books: Comma-separated USFM book IDs
             **kwargs: Additional query parameters
 
         Returns:
             Dictionary with search results
         """
+        if limit is not None:
+            kwargs['limit'] = limit
+        if page is not None:
+            kwargs['page'] = page
+        if sort_by is not None:
+            kwargs['sort_by'] = sort_by
+        if books is not None:
+            kwargs['books'] = books
         return self._make_request(
             self.search_api.v4_text_search,
             query=query,
