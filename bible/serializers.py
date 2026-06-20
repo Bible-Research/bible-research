@@ -52,10 +52,17 @@ class BiblePassageSerializer(serializers.Serializer):
         try:
             if is_esv_fileset(fileset_id):
                 if response_format == 'audio':
-                    raise ValueError(
-                        "ESV API fileset does not provide audio. "
-                        "Use ENGESV (DBT) or ENGESHN1DA for audio."
+                    audio_url = (
+                        get_default_esv_client()
+                        .get_chapter_audio_url(book_id, chapter)
                     )
+                    return {
+                        'book': book_id,
+                        'book_name': book_name,
+                        'chapter': chapter,
+                        'format': 'audio',
+                        'audio_url': audio_url,
+                    }
                 parsed = (
                     get_default_esv_client()
                     .get_chapter_with_headings(book_id, chapter)
