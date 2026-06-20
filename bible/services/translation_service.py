@@ -3,6 +3,7 @@
 import logging
 
 from .dbt.client import get_default_dbt_client
+from .esv.registry import get_esv_translation_listing
 from .sword.client import get_default_sword_client
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,10 @@ class TranslationService:
         Returns:
             list: A list of translations without video and audio stream.
         """
-        logger.info("Fetching live translations for language_iso: %s", language_iso)
+        logger.info(
+            "Fetching live translations for language_iso: %s",
+            language_iso,
+        )
         client = get_default_dbt_client()
         params = {'limit': 500}
         if language_iso:
@@ -37,7 +41,10 @@ class TranslationService:
         try:
             response = client.get_bibles(**params)
             translations = response.get('data', [])
-            logger.info("Received %d translations from DBT API.", len(translations))
+            logger.info(
+                "Received %d translations from DBT API.",
+                len(translations),
+            )
             logger.debug("Raw translations from API: %s", translations)
             processed = cls._process_translations(translations)
         except Exception as e:
@@ -49,9 +56,18 @@ class TranslationService:
         if language_iso:
             needle = language_iso.lower()
             sword_entries = [
-                e for e in sword_entries if e['iso'].lower() == needle
+                e for e in sword_entries
+                if e['iso'].lower() == needle
             ]
-        return processed + sword_entries
+
+        esv_entries = get_esv_translation_listing()
+        if language_iso:
+            needle = language_iso.lower()
+            esv_entries = [
+                e for e in esv_entries
+                if e['iso'].lower() == needle
+            ]
+        return processed + sword_entries + esv_entries
 
     @classmethod
     def _process_translations(cls, translations):
@@ -63,7 +79,8 @@ class TranslationService:
             translations (list): A list of translations to process.
 
         Returns:
-            list: A list of processed translations with excluded content removed.
+            list: A list of processed translations with excluded
+                content removed.
         """
         logger.info("Processing %d translations.", len(translations))
         processed = []
@@ -82,8 +99,10 @@ class TranslationService:
                 for fs in fileset_list:
                     fs_type = fs.get('type', '')
 
-                    # Exclude if 'video' is in the string OR it matches our specific list
-                    is_excluded = 'video' in fs_type or fs_type in excluded_types
+                    is_excluded = (
+                        'video' in fs_type
+                        or fs_type in excluded_types
+                    )
 
                     if not is_excluded:
                         filtered_filesets.append(fs)

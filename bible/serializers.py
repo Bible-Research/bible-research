@@ -3,6 +3,8 @@ from django.conf import settings
 from rest_framework import serializers
 
 from bible.services.dbt.client import get_default_dbt_client
+from bible.services.esv.client import get_default_esv_client
+from bible.services.esv.registry import is_esv_fileset
 from bible.services.sword.client import get_default_sword_client
 from bible.services.google_tts.registry import get_tts_config
 from bible.services.sword.registry import (
@@ -48,6 +50,31 @@ class BiblePassageSerializer(serializers.Serializer):
         )
 
         try:
+            if is_esv_fileset(fileset_id):
+                if response_format == 'audio':
+                    raise ValueError(
+                        "ESV API fileset does not provide audio. "
+                        "Use ENGESV (DBT) or ENGESHN1DA for audio."
+                    )
+                parsed = (
+                    get_default_esv_client()
+                    .get_chapter_with_headings(book_id, chapter)
+                )
+                return {
+                    'book': book_id,
+                    'book_name': book_name,
+                    'chapter': chapter,
+                    'format': 'text',
+                    'verses': [
+                        {
+                            'verse': v['verse_start'],
+                            'text': v['verse_text'],
+                        }
+                        for v in parsed['verses']
+                    ],
+                    'headings': parsed['headings'],
+                }
+
             if is_sword_fileset(fileset_id) and response_format == 'audio':
                 canon = canonical_sword_fileset_id(fileset_id)
                 voice_name = get_tts_config(canon)["voice_name"]
@@ -134,7 +161,10 @@ class BiblePassageSerializer(serializers.Serializer):
                 'chapter': chapter,
                 'format': 'text',
                 'verses': [
-                    {'verse': v['verse_start'], 'text': v.get('verse_text', '')}
+                    {
+                        'verse': v['verse_start'],
+                        'text': v.get('verse_text', ''),
+                    }
                     for v in passage_data['data']
                     if 'verse_text' in v
                 ],

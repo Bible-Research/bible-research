@@ -55,6 +55,30 @@ NEW_TESTAMENT_BOOKS = {
 }
 
 
+_BOOK_ID_TO_NAME = {
+    code: name.title() for name, code, _ in _BIBLE_BOOKS
+}
+
+
+def get_book_name_from_id(book_id: str) -> str:
+    """Return the full English book name for a DBT book ID.
+
+    Args:
+        book_id (str): DBT book ID (e.g. 'MAT', 'GEN', '1KI')
+
+    Returns:
+        str: Title-cased book name (e.g. 'Matthew', 'Genesis',
+             '1 Kings')
+
+    Raises:
+        ValueError: If the book_id is not found.
+    """
+    name = _BOOK_ID_TO_NAME.get(book_id.upper())
+    if name is None:
+        raise ValueError(f"Unknown book ID: {book_id!r}")
+    return name
+
+
 _ROMAN_TO_ARABIC = {'i': '1', 'ii': '2', 'iii': '3'}
 
 
