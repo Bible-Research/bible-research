@@ -55,8 +55,21 @@ NEW_TESTAMENT_BOOKS = {
 }
 
 
+_LOWERCASE_WORDS = frozenset({'of', 'and', 'the', 'a', 'an'})
+
+
+def _book_title(name: str) -> str:
+    """Title-case a book name, keeping prepositions lower."""
+    parts = name.split()
+    return ' '.join(
+        w.lower() if (i > 0 and w.lower() in _LOWERCASE_WORDS)
+        else w.capitalize()
+        for i, w in enumerate(parts)
+    )
+
+
 _BOOK_ID_TO_NAME = {
-    code: name.title() for name, code, _ in _BIBLE_BOOKS
+    code: _book_title(name) for name, code, _ in _BIBLE_BOOKS
 }
 
 
