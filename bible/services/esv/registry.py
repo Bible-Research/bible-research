@@ -35,6 +35,11 @@ def get_esv_translation_listing() -> list:
                     "type": "text_plain",
                     "size": "C",
                 },
+                {
+                    "id": fid,
+                    "type": "audio",
+                    "size": "C",
+                },
             ],
         }
         for fid, meta in ESV_TRANSLATIONS.items()

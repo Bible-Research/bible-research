@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from bible.services.esv.client import (
     ESVClient,
+    ESV_AUDIO_BASE_URL,
     _parse_passage,
 )
 from bible.services.esv.registry import (
@@ -54,9 +55,13 @@ class ESVRegistryTests(TestCase):
         self.assertEqual(entry["abbr"], "ESV")
         self.assertEqual(entry["iso"], "eng")
         filesets = entry["filesets"]
-        self.assertEqual(len(filesets), 1)
-        self.assertEqual(filesets[0]["id"], "ENGESV_API")
-        self.assertEqual(filesets[0]["type"], "text_plain")
+        self.assertEqual(len(filesets), 2)
+        types = {f["type"] for f in filesets}
+        self.assertIn("text_plain", types)
+        self.assertIn("audio", types)
+        for f in filesets:
+            self.assertEqual(f["id"], "ENGESV_API")
+            self.assertEqual(f["size"], "C")
 
 
 # ============================================================
@@ -161,7 +166,18 @@ class ESVSerializerRoutingTests(TestCase):
         )
 
     @override_settings(ESV_KEY="test-key")
-    def test_serializer_rejects_esv_audio(self):
+    @patch(
+        "bible.serializers.get_default_esv_client"
+    )
+    def test_serializer_returns_esv_audio_url(
+        self, mock_get
+    ):
+        mock_client = MagicMock()
+        mock_client.get_chapter_audio_url.return_value = (
+            "https://cdn.esv.org/audio/genesis_1.mp3"
+        )
+        mock_get.return_value = mock_client
+
         data = {
             "book": "GEN",
             "book_name": "Genesis",
@@ -172,8 +188,71 @@ class ESVSerializerRoutingTests(TestCase):
         result = BiblePassageSerializer(data).to_representation(
             data
         )
-        self.assertEqual(result.get("verses", []), [])
-        self.assertIn("message", result)
+        self.assertEqual(result["format"], "audio")
+        self.assertEqual(
+            result["audio_url"],
+            "https://cdn.esv.org/audio/genesis_1.mp3",
+        )
+        mock_client.get_chapter_audio_url.assert_called_once_with(
+            "GEN", 1
+        )
+
+
+# ============================================================
+# get_chapter_audio_url — redirect handling
+# ============================================================
+
+class ESVClientAudioTests(TestCase):
+    @override_settings(ESV_KEY="test-key")
+    def test_returns_location_from_redirect(self):
+        client = ESVClient(api_key="test-key")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 302
+        mock_resp.headers = {
+            "Location": "https://cdn.esv.org/audio/jhn_3.mp3"
+        }
+        client.session.get = MagicMock(
+            return_value=mock_resp
+        )
+
+        url = client.get_chapter_audio_url("JHN", 3)
+
+        self.assertEqual(
+            url, "https://cdn.esv.org/audio/jhn_3.mp3"
+        )
+        call_args, call_kwargs = client.session.get.call_args
+        self.assertIn(ESV_AUDIO_BASE_URL, call_args)
+        params = call_kwargs.get("params", {})
+        self.assertIn("John 3", params.get("q", ""))
+        self.assertFalse(
+            call_kwargs.get("allow_redirects", True)
+        )
+
+    @override_settings(ESV_KEY="test-key")
+    def test_raises_if_no_location_header(self):
+        client = ESVClient(api_key="test-key")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 302
+        mock_resp.headers = {}
+        client.session.get = MagicMock(
+            return_value=mock_resp
+        )
+
+        with self.assertRaises(ValueError):
+            client.get_chapter_audio_url("GEN", 1)
+
+    @override_settings(ESV_KEY="test-key")
+    def test_raises_on_non_redirect_status(self):
+        client = ESVClient(api_key="test-key")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+        client.session.get = MagicMock(
+            return_value=mock_resp
+        )
+
+        with self.assertRaises(ValueError):
+            client.get_chapter_audio_url("GEN", 1)
 
 
 # ============================================================

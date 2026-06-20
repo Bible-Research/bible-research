@@ -12,6 +12,7 @@ from bible.utils.bible_books import get_book_name_from_id
 logger = logging.getLogger(__name__)
 
 ESV_BASE_URL = "https://api.esv.org/v3/passage/text/"
+ESV_AUDIO_BASE_URL = "https://api.esv.org/v3/passage/audio/"
 
 _VERSE_MARKER = re.compile(r"\[(\d+)\]")
 
@@ -57,6 +58,48 @@ class ESVClient:
         raw = self.fetch_chapter_raw(book_id, chapter)
         passage = (raw.get("passages") or [""])[0]
         return _parse_passage(passage)["verses"]
+
+    def get_chapter_audio_url(
+        self, book_id: str, chapter: int
+    ) -> str:
+        """Return the CDN redirect URL for a chapter MP3.
+
+        The ESV audio endpoint responds with a 3xx redirect to
+        the actual MP3 on their CDN.  We capture the Location
+        header and return it so the frontend can play directly.
+
+        Args:
+            book_id: Standard book ID (e.g. 'GEN', 'JHN').
+            chapter: Chapter number.
+
+        Returns:
+            Absolute URL string pointing to the chapter MP3.
+
+        Raises:
+            ValueError: If the API does not redirect as expected.
+            requests.HTTPError: On 4xx/5xx from the ESV API.
+        """
+        book_name = get_book_name_from_id(book_id)
+        params = {"q": f"{book_name} {chapter}"}
+        r = self.session.get(
+            ESV_AUDIO_BASE_URL,
+            params=params,
+            allow_redirects=False,
+            timeout=10,
+        )
+        if r.status_code not in (301, 302, 303, 307, 308):
+            r.raise_for_status()
+            raise ValueError(
+                "Expected redirect from ESV audio API, "
+                f"got HTTP {r.status_code}"
+            )
+        location = r.headers.get("Location")
+        if not location:
+            raise ValueError(
+                "ESV audio API redirect contained no "
+                f"Location header for {book_name} {chapter}"
+            )
+        return location
 
     def get_chapter_with_headings(
         self, book_id: str, chapter: int
