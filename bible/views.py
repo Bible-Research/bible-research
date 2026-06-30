@@ -14,6 +14,7 @@ from bible.services.sword.registry import (
     canonical_sword_fileset_id,
     is_sword_fileset,
 )
+from bible.services.esv.registry import is_esv_fileset
 from bible.services.storage import gcs
 from .serializers import BiblePassageSerializer
 from .services.translation_service import TranslationService
@@ -38,7 +39,7 @@ class BiblePassageView(APIView):
 
     Example:
         /api/v1/bible/?passage=John+3&fileset_id=ENGESV
-        /api/v1/bible/?passage=John+3&fileset_id=LVSGLU8   # Latvian
+        /api/v1/bible/?passage=John+3&fileset_id=LVSGLU8   # LV
         /api/v1/bible/?passage=Luke+20&fileset_id=GLU8&response_format=audio  # LV audio
     """
 
@@ -420,7 +421,7 @@ class BibleSearchView(APIView):
         books = request.query_params.get('books')
 
         try:
-            if fileset_id == 'ENGESV_API':
+            if is_esv_fileset(fileset_id):
                 return self._esv_search(query, limit, page)
             if is_sword_fileset(fileset_id):
                 return self._sword_search(
