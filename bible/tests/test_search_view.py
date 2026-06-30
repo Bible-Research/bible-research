@@ -141,3 +141,166 @@ def test_sword_books_filter_limits_scan(
         for call in mock_sword.get_chapter_verses.call_args_list
     }
     assert called_books == {'GEN', 'MAT'}
+
+
+@pytest.mark.django_db
+@patch('bible.views.get_default_esv_client')
+def test_esv_search_with_engesv_api_fileset(
+    mock_get_esv_client, factory
+):
+    """ENGESV_API fileset → uses ESV API search."""
+    mock_esv_client = mock_get_esv_client.return_value
+    mock_esv_client.search.return_value = {
+        'page': 1,
+        'total_results': 2,
+        'total_pages': 1,
+        'results': [
+            {
+                'reference': 'John 3:16',
+                'content': 'For God so loved the world, that he gave '
+                           'his only Son.'
+            },
+            {
+                'reference': 'Romans 8:28',
+                'content': 'And we know that for those who love God '
+                           'all things work together for good.'
+            }
+        ]
+    }
+
+    request = factory.get('/fake-url/', {
+        'query': 'love',
+        'fileset_id': 'ENGESV_API',
+        'limit': '10',
+    })
+    response = BibleSearchView.as_view()(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    verses = response.data['data']['verses']
+    assert len(verses) == 2
+
+    # Check first verse (John 3:16)
+    assert verses[0]['book_id'] == 'JHN'
+    assert verses[0]['chapter'] == 3
+    assert verses[0]['verse_start'] == 16
+    assert 'For God so loved the world' in verses[0]['verse_text']
+
+    # Check second verse (Romans 8:28)
+    assert verses[1]['book_id'] == 'ROM'
+    assert verses[1]['chapter'] == 8
+    assert verses[1]['verse_start'] == 28
+    assert 'love God' in verses[1]['verse_text']
+
+    # Check pagination metadata
+    pagination = response.data['data']['meta']['pagination']
+    assert pagination['total'] == 2
+    assert pagination['count'] == 2
+    assert pagination['per_page'] == 10
+    assert pagination['current_page'] == 1
+    assert pagination['total_pages'] == 1
+
+    # Verify ESV client was called correctly
+    mock_esv_client.search.assert_called_once_with('love', 1, 10)
+
+
+@pytest.mark.django_db
+@patch('bible.views.get_default_esv_client')
+def test_esv_search_handles_verse_ranges(
+    mock_get_esv_client, factory
+):
+    """ESV API search should handle verse ranges by taking first verse."""
+    mock_esv_client = mock_get_esv_client.return_value
+    mock_esv_client.search.return_value = {
+        'page': 1,
+        'total_results': 1,
+        'total_pages': 1,
+        'results': [
+            {
+                'reference': 'Genesis 1:1-2',
+                'content': 'In the beginning, God created the heavens '
+                           'and the earth.'
+            }
+        ]
+    }
+
+    request = factory.get('/fake-url/', {
+        'query': 'beginning',
+        'fileset_id': 'ENGESV_API',
+    })
+    response = BibleSearchView.as_view()(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    verses = response.data['data']['verses']
+    assert len(verses) == 1
+    assert verses[0]['book_id'] == 'GEN'
+    assert verses[0]['chapter'] == 1
+    assert verses[0]['verse_start'] == 1  # Should take first verse of range
+
+
+@pytest.mark.django_db
+@patch('bible.views.get_default_esv_client')
+def test_esv_search_handles_books_with_numbers(
+    mock_get_esv_client, factory
+):
+    """ESV API search should handle book names with numbers (e.g., 1 John)."""
+    mock_esv_client = mock_get_esv_client.return_value
+    mock_esv_client.search.return_value = {
+        'page': 1,
+        'total_results': 1,
+        'total_pages': 1,
+        'results': [
+            {
+                'reference': '1 John 4:8',
+                'content': 'Anyone who does not love does not know God, '
+                           'because God is love.'
+            }
+        ]
+    }
+
+    request = factory.get('/fake-url/', {
+        'query': 'God is love',
+        'fileset_id': 'ENGESV_API',
+    })
+    response = BibleSearchView.as_view()(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    verses = response.data['data']['verses']
+    assert len(verses) == 1
+    assert verses[0]['book_id'] == '1JN'
+    assert verses[0]['chapter'] == 4
+    assert verses[0]['verse_start'] == 8
+
+
+@pytest.mark.django_db
+@patch('bible.views.get_default_esv_client')
+def test_esv_search_handles_malformed_references(
+    mock_get_esv_client, factory
+):
+    """ESV API search should skip malformed references and continue."""
+    mock_esv_client = mock_get_esv_client.return_value
+    mock_esv_client.search.return_value = {
+        'page': 1,
+        'total_results': 2,
+        'total_pages': 1,
+        'results': [
+            {
+                'reference': 'John 3:16',
+                'content': 'For God so loved the world.'
+            },
+            {
+                'reference': 'Invalid Reference',
+                'content': 'This should be skipped.'
+            }
+        ]
+    }
+
+    request = factory.get('/fake-url/', {
+        'query': 'love',
+        'fileset_id': 'ENGESV_API',
+    })
+    response = BibleSearchView.as_view()(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    verses = response.data['data']['verses']
+    assert len(verses) == 1  # Only valid reference should be included
+    assert verses[0]['book_id'] == 'JHN'

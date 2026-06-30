@@ -387,3 +387,80 @@ class ESVSerializerHeadingsTests(TestCase):
         self.assertEqual(
             result["headings"][0]["before_verse"], 3
         )
+
+
+class ESVClientSearchTests(TestCase):
+    """Tests for the ESV client search method."""
+
+    @override_settings(ESV_KEY="test-key")
+    @patch("bible.services.esv.client.requests.Session.get")
+    def test_search_calls_esv_api_correctly(self, mock_get):
+        """Search method should call ESV API with correct parameters."""
+        # Mock the API response
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "page": 1,
+            "total_results": 2,
+            "total_pages": 1,
+            "results": [
+                {
+                    "reference": "John 3:16",
+                    "content": "For God so loved the world"
+                }
+            ]
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        client = ESVClient(api_key="test-key")
+        result = client.search("love", page=1, page_size=50)
+
+        # Verify the API was called correctly
+        mock_get.assert_called_once()
+        call_args = mock_get.call_args
+        self.assertIn("q=love", call_args[1]['params'])
+        self.assertIn("page=1", call_args[1]['params'])
+        self.assertIn("page-size=50", call_args[1]['params'])
+
+        # Verify the result
+        self.assertEqual(result["total_results"], 2)
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["results"][0]["reference"], "John 3:16")
+
+    @override_settings(ESV_KEY="test-key")
+    @patch("bible.services.esv.client.requests.Session.get")
+    def test_search_limits_page_size_to_100(self, mock_get):
+        """Search method should limit page_size to ESV API maximum of 100."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        client = ESVClient(api_key="test-key")
+        client.search("test", page=1, page_size=200)  # Should be limited
+        # to 100
+
+        call_args = mock_get.call_args
+        self.assertIn("page-size=100", call_args[1]['params'])
+
+    @override_settings(ESV_KEY="test-key")
+    @patch("bible.services.esv.client.requests.Session.get")
+    def test_search_handles_api_errors(self, mock_get):
+        """Search method should raise HTTPError for API errors."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = Exception("API Error")
+        mock_get.return_value = mock_response
+
+        client = ESVClient(api_key="test-key")
+
+        with self.assertRaises(Exception) as context:
+            client.search("test")
+
+        self.assertIn("API Error", str(context.exception))
+
+    def test_search_requires_api_key(self):
+        """Search method should raise ValueError if no API key is set."""
+        with self.assertRaises(ValueError) as context:
+            ESVClient(api_key=None)
+
+        self.assertIn("ESV_KEY not configured", str(context.exception))

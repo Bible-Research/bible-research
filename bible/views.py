@@ -18,6 +18,9 @@ from bible.services.storage import gcs
 from .serializers import BiblePassageSerializer
 from .services.translation_service import TranslationService
 from .services.dbt.client import get_default_dbt_client
+from .services.esv.client import (
+    get_default_esv_client
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +38,8 @@ class BiblePassageView(APIView):
 
     Example:
         /api/v1/bible/?passage=John+3&fileset_id=ENGESV
-        /api/v1/bible/?passage=John+3&fileset_id=LVSGLU8   # Latvian Glück
-        /api/v1/bible/?passage=Luke+20&fileset_id=GLU8&response_format=audio  # Latvian audio
+        /api/v1/bible/?passage=John+3&fileset_id=LVSGLU8   # Latvian
+        /api/v1/bible/?passage=Luke+20&fileset_id=GLU8&response_format=audio  # LV audio
     """
 
     def get(self, request, format=None):
@@ -307,7 +310,8 @@ class CopyrightView(APIView):
             location=OpenApiParameter.QUERY,
             description=(
                 'DBT or SWORD fileset ID '
-                '(e.g. ENGESV, LVSGLU8).'
+                '(e.g. ENGESV, LVSGLU8). '
+                'Use ENGESV_API for ESV API search.'
             ),
             required=True,
         ),
@@ -366,10 +370,16 @@ class BibleSearchView(APIView):
     Query Parameters:
         - query: Word/phrase to search (required)
         - fileset_id: DBT or SWORD fileset ID (required)
+                     Use ENGESV_API for ESV API search
         - limit: Max results per page (default 15)
         - page: Result page number (default 1)
         - sort_by: Sort field (DBT only)
         - books: Comma-separated USFM book IDs
+
+    Examples:
+        - ESV API search: ?query=love&fileset_id=ENGESV_API
+        - DBT search: ?query=Jesus&fileset_id=ENGESV
+        - SWORD search: ?query=faith&fileset_id=LVSGLU8
     """
 
     def get(self, request, format=None):
@@ -410,6 +420,8 @@ class BibleSearchView(APIView):
         books = request.query_params.get('books')
 
         try:
+            if fileset_id == 'ENGESV_API':
+                return self._esv_search(query, limit, page)
             if is_sword_fileset(fileset_id):
                 return self._sword_search(
                     fileset_id, query, limit, page, books
@@ -426,6 +438,67 @@ class BibleSearchView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    def _esv_search(self, query, limit, page):
+        """Search using ESV API passage search endpoint."""
+        esv_client = get_default_esv_client()
+
+        # Call ESV API search
+        result = esv_client.search(query, page, limit)
+
+        # Transform ESV API response to match our format
+        verses = []
+        for item in result.get('results', []):
+            # Parse reference like "John 3:16" or "Genesis 1:1-2"
+            reference = item.get('reference', '')
+            try:
+                parts = reference.split()
+                if len(parts) >= 2:
+                    # Handle book names with spaces (e.g., "1 John")
+                    verse_part = parts[-1]  # "3:16" or "3:16-17"
+                    book_name = ' '.join(parts[:-1])  # "John" or "1 John"
+
+                    # Parse chapter and verse
+                    if ':' in verse_part:
+                        chapter_str, verse_str = verse_part.split(':', 1)
+                        chapter = int(chapter_str)
+                        # Handle verse ranges like "1-2" - take first verse
+                        verse_start = int(verse_str.split('-')[0])
+
+                        # Convert book name to book ID using existing utility
+                        from bible.utils.bible_books import get_dbt_book_id
+                        book_id = get_dbt_book_id(book_name)
+
+                        if book_id:
+                            verses.append({
+                                'book_id': book_id,
+                                'chapter': chapter,
+                                'verse_start': verse_start,
+                                'verse_text': item.get('content', ''),
+                            })
+            except (ValueError, IndexError) as e:
+                logger.warning(
+                    f"Failed to parse ESV reference '{reference}': {e}"
+                )
+                continue
+
+        # Build pagination metadata
+        pagination = {
+            'total': result.get('total_results', 0),
+            'count': len(verses),
+            'per_page': limit,
+            'current_page': result.get('page', page),
+            'total_pages': result.get('total_pages', 1),
+        }
+
+        return Response({
+            'data': {
+                'verses': verses,
+                'meta': {
+                    'pagination': pagination
+                }
+            }
+        })
 
     def _dbt_search(
         self, fileset_id, query, limit, page, sort_by, books
