@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 ESV_BASE_URL = "https://api.esv.org/v3/passage/text/"
 ESV_AUDIO_BASE_URL = "https://api.esv.org/v3/passage/audio/"
+ESV_SEARCH_BASE_URL = "https://api.esv.org/v3/passage/search/"
 
 _VERSE_MARKER = re.compile(r"\[(\d+)\]")
 
@@ -125,6 +126,51 @@ class ESVClient:
         raw = self.fetch_chapter_raw(book_id, chapter)
         passage = (raw.get("passages") or [""])[0]
         return _parse_passage(passage)
+
+    def search(
+        self,
+        query: str,
+        page: int = 1,
+        page_size: int = 50
+    ) -> Dict[str, Any]:
+        """Search the ESV Bible for a word or phrase.
+
+        Args:
+            query: Search query string
+            page: Page number (default: 1)
+            page_size: Results per page (default: 50, max: 100)
+
+        Returns:
+            Dict with search results matching ESV API response format
+
+        Raises:
+            requests.HTTPError: On 4xx/5xx from the ESV API
+        """
+        params = {
+            "q": query,
+            "page": str(page),
+            "page-size": str(min(page_size, 100)),  # ESV API max is 100
+        }
+
+        logger.info(
+            f"ESV API search: query='{query}', page={page}, "
+            f"page_size={page_size}"
+        )
+
+        response = self.session.get(
+            ESV_SEARCH_BASE_URL,
+            params=params,
+            timeout=10
+        )
+        response.raise_for_status()
+
+        result = response.json()
+        logger.info(
+            f"ESV API search returned {result.get('total_results', 0)} "
+            f"total results"
+        )
+
+        return result
 
 
 def _normalise(text: str) -> str:
