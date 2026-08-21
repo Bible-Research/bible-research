@@ -25,6 +25,7 @@ locals {
     "appoptimize.googleapis.com",
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "secretmanager.googleapis.com",
