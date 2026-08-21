@@ -17,6 +17,7 @@ plan.md
 
 # Terraform: ignore local secret overrides only (committed *.auto.tfvars set region/project).
 terraform/terraform.tfvars
+terraform/tfplan
 terraform/.terraform/
 terraform/terraform.tfstate*
 terraform/prod.tfplan
