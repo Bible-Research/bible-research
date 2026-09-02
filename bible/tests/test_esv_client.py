@@ -464,3 +464,113 @@ class ESVClientSearchTests(TestCase):
             ESVClient(api_key=None)
 
         self.assertIn("ESV_KEY not configured", str(context.exception))
+
+
+# ============================================================
+# Issue #66 — Poetry and quoted scripture incorrectly
+# parsed as headings
+# ============================================================
+
+class ParsePassagePoetryAndQuotesTests(TestCase):
+    """Test cases for GitHub issue #66.
+
+    The ESV API returns poetry (like Daniel 7:13) and quoted
+    scripture (like Luke 4:8-12) in a format that was being
+    incorrectly parsed as section headings.
+    """
+
+    def test_daniel_7_verse_13_continuation_not_heading(self):
+        """Daniel 7:13 poetry continuation should not be a
+        heading."""
+        # Simulates ESV API response for Daniel 7:13-14
+        passage = (
+            "The Son of Man Is Given Dominion\n\n"
+            "  [13] \"I saw in the night visions,\n\n"
+            "    and behold, with the clouds of heaven\n"
+            "        there came one like a son of man,\n"
+            "    and he came to the Ancient of Days\n"
+            "        and was presented before him.\n"
+            "    [14] And to him was given dominion\n"
+            "        and glory and a kingdom,\n"
+            "    that all peoples, nations, and languages\n"
+            "        should serve him;\n"
+            "    his dominion is an everlasting dominion,\n"
+            "        which shall not pass away,\n"
+            "    and his kingdom one\n"
+            "        that shall not be destroyed."
+        )
+        result = _parse_passage(passage)
+
+        # Should have exactly 1 heading (the actual section
+        # heading)
+        headings = result["headings"]
+        self.assertEqual(len(headings), 1)
+        self.assertEqual(
+            headings[0]["text"],
+            "The Son of Man Is Given Dominion"
+        )
+        self.assertEqual(headings[0]["before_verse"], 13)
+
+        # Should have 2 verses
+        verses = result["verses"]
+        self.assertEqual(len(verses), 2)
+        self.assertEqual(verses[0]["verse_start"], 13)
+        self.assertEqual(verses[1]["verse_start"], 14)
+
+        # Verse 13 should contain the full poetry text
+        verse_13_text = verses[0]["verse_text"]
+        self.assertIn("I saw in the night visions", verse_13_text)
+        self.assertIn("and behold", verse_13_text)
+        self.assertIn("clouds of heaven", verse_13_text)
+
+    def test_luke_4_quoted_scripture_not_headings(self):
+        """Luke 4:8-12 quoted scripture should not be parsed
+        as headings."""
+        # Simulates ESV API response for Luke 4:8-12
+        passage = (
+            "  [8] And Jesus answered him, \"It is written,\n\n"
+            "    \"'You shall worship the Lord your God,\n"
+            "        and him only shall you serve.'\"\n"
+            "    \n"
+            "    \n"
+            "      [9] And he took him to Jerusalem and set "
+            "him on the pinnacle of the temple and said to "
+            "him, \"If you are the Son of God, throw yourself "
+            "down from here, [10] for it is written,\n\n"
+            "    \"'He will command his angels concerning you,\n"
+            "        to guard you,'\n"
+            "    \n"
+            "    \n"
+            "      [11] and\n\n"
+            "    \"'On their hands they will bear you up,\n"
+            "        lest you strike your foot against a "
+            "stone.'\"\n"
+            "    \n"
+            "    \n"
+            "      [12] And Jesus answered him, \"It is said, "
+            "'You shall not put the Lord your God to the "
+            "test.'\""
+        )
+        result = _parse_passage(passage)
+
+        # Should have NO headings (all text is part of verses)
+        headings = result["headings"]
+        self.assertEqual(len(headings), 0)
+
+        # Should have 5 verses (8, 9, 10, 11, 12)
+        verses = result["verses"]
+        verse_nums = [v["verse_start"] for v in verses]
+        self.assertEqual(len(verses), 5)
+        self.assertIn(8, verse_nums)
+        self.assertIn(9, verse_nums)
+        self.assertIn(10, verse_nums)
+        self.assertIn(11, verse_nums)
+        self.assertIn(12, verse_nums)
+
+        # Verse 8 should include the quoted scripture
+        verse_8 = next(v for v in verses if v["verse_start"] == 8)
+        self.assertIn("It is written", verse_8["verse_text"])
+        self.assertIn(
+            "You shall worship the Lord your God",
+            verse_8["verse_text"]
+        )

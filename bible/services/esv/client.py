@@ -183,31 +183,91 @@ def _parse_passage(passage: str) -> Dict[str, Any]:
     ESV format (with our request params):
 
     - Headings appear as their own paragraph (blank-line
-      delimited) with no ``[N]`` marker.
+      delimited) with no ``[N]`` marker, and are NOT indented.
     - Verse text has inline ``[N]`` markers; multiple verses
       may share one paragraph.
     - Text before the first ``[N]`` in a verse paragraph is
       treated as a heading for the first verse in that block.
+    - Poetry and quoted scripture may span multiple blocks
+      within a single verse (between verse markers) and are
+      typically indented. These should be appended to the
+      current verse, not treated as headings.
     """
     verses: List[Dict[str, Any]] = []
     headings: List[Dict[str, Any]] = []
     pending_heading: List[str] = []
+    pending_verse_text: List[str] = []
+    current_verse_num: int | None = None
 
     blocks = re.split(r"\n{2,}", passage.strip())
 
-    for block in blocks:
-        block = block.strip()
+    for block_raw in blocks:
+        block = block_raw.strip()
         if not block:
             continue
 
+        # Check if block is indented (poetry/quote continuation)
+        is_indented = block_raw.startswith((' ', '\t'))
+
         first_marker = _VERSE_MARKER.search(block)
         if first_marker is None:
-            pending_heading.append(_normalise(block))
+            # Block has no verse marker
+            if current_verse_num is not None and is_indented:
+                # Indented block after verse start = continuation
+                pending_verse_text.append(_normalise(block))
+            elif current_verse_num is not None:
+                # Non-indented block after verse = new heading
+                # Flush current verse first
+                if pending_verse_text:
+                    full_text = _normalise(
+                        " ".join(pending_verse_text)
+                    )
+                    if full_text:
+                        verses.append({
+                            "verse_start": current_verse_num,
+                            "verse_text": full_text,
+                        })
+                    pending_verse_text = []
+                current_verse_num = None
+                pending_heading.append(_normalise(block))
+            else:
+                # No verse started yet = heading
+                pending_heading.append(_normalise(block))
             continue
 
+        # Block has at least one verse marker
         pre = block[:first_marker.start()].strip()
         if pre:
-            pending_heading.append(_normalise(pre))
+            if is_indented and current_verse_num is not None:
+                # Indented pre-text is continuation of current
+                # verse
+                pending_verse_text.append(_normalise(pre))
+            else:
+                # Non-indented pre-text is a heading
+                # Flush current verse first if any
+                if current_verse_num is not None and pending_verse_text:
+                    full_text = _normalise(
+                        " ".join(pending_verse_text)
+                    )
+                    if full_text:
+                        verses.append({
+                            "verse_start": current_verse_num,
+                            "verse_text": full_text,
+                        })
+                    pending_verse_text = []
+                    current_verse_num = None
+                pending_heading.append(_normalise(pre))
+        elif current_verse_num is not None and pending_verse_text:
+            # No pre-text, but we have a pending verse - flush
+            # it
+            full_text = _normalise(" ".join(pending_verse_text))
+            if full_text:
+                verses.append({
+                    "verse_start": current_verse_num,
+                    "verse_text": full_text,
+                })
+            pending_verse_text = []
+            current_verse_num = None
 
         rest = block[first_marker.start():]
         parts = _VERSE_MARKER.split(rest)
@@ -216,6 +276,19 @@ def _parse_passage(passage: str) -> Dict[str, Any]:
             v_num = int(parts[i])
             v_text = _normalise(parts[i + 1])
 
+            # Flush any pending verse before starting new one
+            if current_verse_num is not None and pending_verse_text:
+                full_text = _normalise(
+                    " ".join(pending_verse_text)
+                )
+                if full_text:
+                    verses.append({
+                        "verse_start": current_verse_num,
+                        "verse_text": full_text,
+                    })
+                pending_verse_text = []
+
+            # Process any pending heading for this new verse
             if pending_heading:
                 h_text = _normalise(
                     " ".join(pending_heading)
@@ -227,12 +300,21 @@ def _parse_passage(passage: str) -> Dict[str, Any]:
                     })
                 pending_heading = []
 
+            # Start collecting text for this verse
+            current_verse_num = v_num
             if v_text:
-                verses.append({
-                    "verse_start": v_num,
-                    "verse_text": v_text,
-                })
+                pending_verse_text.append(v_text)
+
             i += 2
+
+    # Flush final verse if any
+    if current_verse_num is not None and pending_verse_text:
+        full_text = _normalise(" ".join(pending_verse_text))
+        if full_text:
+            verses.append({
+                "verse_start": current_verse_num,
+                "verse_text": full_text,
+            })
 
     return {"verses": verses, "headings": headings}
 
