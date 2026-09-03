@@ -113,6 +113,16 @@ class Note(models.Model):
         help_text="If True, this note is accessible to unauthenticated users."
     )
 
+    tag_position = models.FloatField(
+        null=True,
+        blank=True,
+        help_text=(
+            "User-defined display order within a tag group. "
+            "Null means no custom order set (falls back to "
+            "created_at DESC)."
+        ),
+    )
+
     # Many-to-many relationship with Verse model, through the NoteVerse
     # intermediary table. This explicit 'through' model is necessary because
     # you have 'note_verses' table in your schema, which implies additional

@@ -145,8 +145,8 @@ class NoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Note
         fields = [
-            'id', 'user', 'note_text', 'public', 'created_at', 'updated_at',
-            'tag', 'verse_references'
+            'id', 'user', 'note_text', 'public', 'created_at',
+            'updated_at', 'tag', 'tag_position', 'verse_references'
         ]
 
     def create(self, validated_data):

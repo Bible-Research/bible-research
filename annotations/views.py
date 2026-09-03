@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 from django.shortcuts import get_object_or_404
 
 from .models import Tag, Note, Comment, Image, generate_image_id
@@ -339,7 +339,10 @@ class NoteViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(id=note_pk)
             logger.debug(f"Filtering by note_pk: {note_pk}")
 
-        final_queryset = queryset.order_by('-created_at')
+        final_queryset = queryset.order_by(
+            F('tag_position').asc(nulls_last=True),
+            '-created_at',
+        )
         logger.info(
             f"Returning {final_queryset.count()} notes"
         )
@@ -369,6 +372,40 @@ class NoteViewSet(viewsets.ModelViewSet):
             output.data,
             status=drf_status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=['post'], url_path='reorder')
+    def reorder(self, request):
+        """
+        Accepts {tag_id, note_ids: [...]} and writes integer
+        positions 1, 2, 3... to tag_position on each note.
+        Only the authenticated user's own notes are updated.
+        """
+        tag_id = request.data.get('tag_id')
+        note_ids = request.data.get('note_ids', [])
+
+        if not tag_id or not isinstance(note_ids, list):
+            return Response(
+                {'detail': 'tag_id and note_ids are required.'},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        notes_map = {
+            n.id: n
+            for n in Note.objects.filter(
+                id__in=note_ids, user=user, tag_id=tag_id
+            )
+        }
+
+        updates = []
+        for position, note_id in enumerate(note_ids, start=1):
+            note = notes_map.get(note_id)
+            if note:
+                note.tag_position = float(position)
+                updates.append(note)
+
+        Note.objects.bulk_update(updates, ['tag_position'])
+        return Response(status=drf_status.HTTP_204_NO_CONTENT)
 
 
 class CommentViewSet(viewsets.ModelViewSet):
