@@ -1,4 +1,5 @@
 import uuid
+import time
 from django.db import models
 from django.db.models import UniqueConstraint, Q
 from bible.models import Verse
@@ -9,6 +10,11 @@ User = get_user_model()
 
 def generate_tag_id():
     return f"TAG{str(uuid.uuid4()).upper().replace('-', '')[:15]}"
+
+
+def get_unix_timestamp():
+    """Returns current Unix timestamp as a float."""
+    return time.time()
 
 
 class Tag(models.Model):
@@ -114,12 +120,10 @@ class Note(models.Model):
     )
 
     tag_position = models.FloatField(
-        null=True,
-        blank=True,
+        default=get_unix_timestamp,
         help_text=(
             "User-defined display order within a tag group. "
-            "Null means no custom order set (falls back to "
-            "created_at DESC)."
+            "Defaults to Unix timestamp at creation."
         ),
     )
 
