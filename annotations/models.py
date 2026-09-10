@@ -392,4 +392,72 @@ class NoteVerse(models.Model):
             note_id_display = self.note.id[:8]
         else:
             note_id_display = self.note.id.hex[:8]
-        return f"Link: Note {note_id_display} to Verse {self.verse.id}"
+        return (
+            f"Link: Note {note_id_display} to Verse {self.verse.id}"
+        )
+
+
+def generate_reading_position_id():
+    return f"RDP{str(uuid.uuid4()).upper().replace('-', '')[:15]}"
+
+
+class ReadingPosition(models.Model):
+    """
+    Tracks the last reading position for each book per user.
+    Automatically syncs across all devices.
+    """
+    id = models.CharField(
+        max_length=18,
+        primary_key=True,
+        editable=False,
+        default=generate_reading_position_id,
+        help_text="Unique identifier for reading position."
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='reading_positions',
+        help_text="The user who owns this reading position."
+    )
+
+    book = models.CharField(
+        max_length=50,
+        help_text=(
+            "Book name (e.g., 'Genesis', 'John', '1 Chronicles')"
+        )
+    )
+
+    chapter = models.IntegerField(
+        default=1,
+        help_text="Chapter number (1-based)"
+    )
+
+    verse = models.IntegerField(
+        default=1,
+        help_text="First verse in view (for scroll restoration)"
+    )
+
+    last_accessed = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'reading_positions'
+        verbose_name = "Reading Position"
+        verbose_name_plural = "Reading Positions"
+        unique_together = [['user', 'book']]
+        ordering = ['-last_accessed']
+        indexes = [
+            models.Index(
+                fields=['user', 'book'],
+                name='reading_pos_user_book_idx'
+            ),
+            models.Index(
+                fields=['user', '-last_accessed'],
+                name='reading_pos_user_time_idx'
+            ),
+        ]
+
+    def __str__(self):
+        username = self.user.username if self.user else 'unknown'
+        return f"{username} - {self.book} {self.chapter}:{self.verse}"

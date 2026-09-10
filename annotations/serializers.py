@@ -3,7 +3,14 @@ from django.db.models import Q
 from rest_framework import serializers
 from bible.models import Verse
 from bible.services.dbt.client import get_default_dbt_client
-from .models import Note, NoteVerse, Tag, Comment, Image
+from .models import (
+    Note,
+    NoteVerse,
+    Tag,
+    Comment,
+    Image,
+    ReadingPosition
+)
 User = get_user_model()
 
 
@@ -561,3 +568,42 @@ def build_comment_tree(queryset):
             roots.append(node)
 
     return roots
+
+
+class ReadingPositionSerializer(serializers.ModelSerializer):
+    """Serializes ReadingPosition model for API operations."""
+
+    class Meta:
+        model = ReadingPosition
+        fields = [
+            'id',
+            'book',
+            'chapter',
+            'verse',
+            'last_accessed'
+        ]
+        read_only_fields = ['id', 'last_accessed']
+
+    def validate_book(self, value):
+        """Validate book name against known Bible books."""
+        from bible.utils.book_mappings import BOOK_NAMES
+        if value not in BOOK_NAMES.values():
+            raise serializers.ValidationError(
+                f"Invalid book name: {value}"
+            )
+        return value
+
+    def create(self, validated_data):
+        """Create or update reading position (upsert behavior)."""
+        user = self.context['request'].user
+        book = validated_data['book']
+
+        position, created = ReadingPosition.objects.update_or_create(
+            user=user,
+            book=book,
+            defaults={
+                'chapter': validated_data['chapter'],
+                'verse': validated_data.get('verse', 1)
+            }
+        )
+        return position

@@ -15,7 +15,14 @@ from django.db import models, transaction
 from django.db.models import Count, Q, F
 from django.shortcuts import get_object_or_404
 
-from .models import Tag, Note, Comment, Image, generate_image_id
+from .models import (
+    Tag,
+    Note,
+    Comment,
+    Image,
+    ReadingPosition,
+    generate_image_id
+)
 from .pagination import NotesPagination
 from .serializers import (
     TagSerializer,
@@ -23,6 +30,7 @@ from .serializers import (
     BulkNoteCreateSerializer,
     CommentSerializer,
     ImageSerializer,
+    ReadingPositionSerializer,
     build_comment_tree,
 )
 from .services.image_storage import upload_original, delete_original
@@ -979,3 +987,62 @@ class ImageDestroyView(APIView):
             user.username, image_id,
         )
         return Response(status=drf_status.HTTP_204_NO_CONTENT)
+
+
+class ReadingPositionViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for reading position tracking.
+
+    GET /api/v1/reading-positions/
+    GET /api/v1/reading-positions/?book=John
+    POST /api/v1/reading-positions/
+    POST /api/v1/reading-positions/bulk/
+    """
+    serializer_class = ReadingPositionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter positions to current user only."""
+        user = self.request.user
+        queryset = ReadingPosition.objects.filter(user=user)
+
+        book = self.request.query_params.get('book')
+        if book:
+            queryset = queryset.filter(book=book)
+
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        """Upsert: create or update reading position."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        position = serializer.save()
+
+        return Response(
+            self.get_serializer(position).data,
+            status=drf_status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['post'])
+    def bulk(self, request):
+        """Bulk fetch positions for multiple books."""
+        books = request.data.get('books', [])
+        if not isinstance(books, list):
+            return Response(
+                {'error': 'books must be an array'},
+                status=drf_status.HTTP_400_BAD_REQUEST
+            )
+
+        positions = ReadingPosition.objects.filter(
+            user=request.user,
+            book__in=books
+        )
+
+        result = {book: None for book in books}
+        for pos in positions:
+            result[pos.book] = {
+                'chapter': pos.chapter,
+                'verse': pos.verse
+            }
+
+        return Response(result)
