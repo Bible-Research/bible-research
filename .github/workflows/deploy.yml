@@ -58,6 +58,12 @@ jobs:
             --project="${GCP_PROJECT_ID}" \
             --quiet --promote --stop-previous-version
 
+      - name: Cleanup old App Engine versions
+        run: |
+          chmod +x scripts/cleanup_app_engine_versions.sh
+          ./scripts/cleanup_app_engine_versions.sh \
+            "${GCP_PROJECT_ID}" "default"
+
       - name: Recent serving versions
         run: |
           gcloud app versions list \
