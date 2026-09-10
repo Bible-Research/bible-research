@@ -16,6 +16,7 @@ from django.db.models import Count, Q, F
 from django.shortcuts import get_object_or_404
 
 from .models import Tag, Note, Comment, Image, generate_image_id
+from .pagination import NotesPagination
 from .serializers import (
     TagSerializer,
     NoteSerializer,
@@ -166,8 +167,12 @@ class NoteViewSet(viewsets.ModelViewSet):
     Additional filtering:
     - GET /api/v1/notes/?tag_id={tag_id} - List notes filtered by tag ID
     - GET /api/v1/notes/?public=true - List both public and private notes
+    - GET /api/v1/notes/?ordering={ordering} - Sort notes
+    - GET /api/v1/notes/?page={page} - Paginate results
+    - GET /api/v1/notes/?page_size={size} - Set page size
     """
     serializer_class = NoteSerializer
+    pagination_class = NotesPagination
     # permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
@@ -254,10 +259,80 @@ class NoteViewSet(viewsets.ModelViewSet):
         )
         instance.delete()
 
+    def _apply_ordering(self, queryset, ordering_param):
+        """
+        Apply ordering to queryset based on ordering parameter.
+
+        Supported orderings:
+        - custom: tag_position ASC, created_at DESC (default)
+        - -custom: tag_position DESC, created_at ASC
+        - created: created_at ASC
+        - -created: created_at DESC
+        - verse: first verse ASC
+        - -verse: first verse DESC
+        """
+        from bible.utils.bible_books import BOOK_ORDER_MAP
+        from django.db.models import Min, Case, When, IntegerField
+
+        if ordering_param in ['verse', '-verse']:
+            # Annotate with first verse info
+            queryset = queryset.annotate(
+                first_book=Min('verses__book'),
+                first_chapter=Min('verses__chapter'),
+                first_verse=Min('verses__verse'),
+                book_order=Case(
+                    *[
+                        When(first_book=book, then=order)
+                        for book, order in BOOK_ORDER_MAP.items()
+                    ],
+                    default=999,
+                    output_field=IntegerField()
+                )
+            )
+
+            if ordering_param == 'verse':
+                return queryset.order_by(
+                    'book_order',
+                    'first_chapter',
+                    'first_verse'
+                )
+            else:  # -verse
+                return queryset.order_by(
+                    '-book_order',
+                    '-first_chapter',
+                    '-first_verse'
+                )
+
+        elif ordering_param == 'custom':
+            return queryset.order_by(
+                F('tag_position').asc(nulls_last=True),
+                '-created_at'
+            )
+
+        elif ordering_param == '-custom':
+            return queryset.order_by(
+                F('tag_position').desc(nulls_first=True),
+                'created_at'
+            )
+
+        elif ordering_param == 'created':
+            return queryset.order_by('created_at')
+
+        elif ordering_param == '-created':
+            return queryset.order_by('-created_at')
+
+        else:
+            # Default to custom ordering
+            return queryset.order_by(
+                F('tag_position').asc(nulls_last=True),
+                '-created_at'
+            )
+
     def get_queryset(self):
         """
         Returns the queryset of notes that the current user
-        has access to.
+        has access to with pagination and ordering support.
+
         - Authenticated users see their own private notes
           by default
         - Unauthenticated users see only public notes
@@ -270,6 +345,10 @@ class NoteViewSet(viewsets.ModelViewSet):
           by its ID
         - GET /api/v1/notes/?tag_id=<tag_id> - Filter by
           tag ID
+        - GET /api/v1/notes/?ordering=<ordering> - Sort order
+          (custom, -custom, created, -created, verse, -verse)
+        - GET /api/v1/notes/?page=<page> - Page number
+        - GET /api/v1/notes/?page_size=<size> - Items per page
 
         Special cases:
         - When requesting a specific note by ID:
@@ -281,11 +360,15 @@ class NoteViewSet(viewsets.ModelViewSet):
         user = self.request.user
         note_pk = self.kwargs.get('pk', None)
         tag_id = self.request.query_params.get('tag_id', None)
+        ordering_param = self.request.query_params.get(
+            'ordering', 'custom'
+        )
 
         logger.info(
             f"NoteViewSet.get_queryset called for user: "
             f"{user.username if user.is_authenticated else 'Anonymous'} "
-            f"| note_pk: {note_pk} | tag_id: {tag_id}"
+            f"| note_pk: {note_pk} | tag_id: {tag_id} "
+            f"| ordering: {ordering_param}"
         )
 
         if note_pk or tag_id:
@@ -339,12 +422,12 @@ class NoteViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(id=note_pk)
             logger.debug(f"Filtering by note_pk: {note_pk}")
 
-        final_queryset = queryset.order_by(
-            F('tag_position').asc(nulls_last=True),
-            '-created_at',
+        # Apply ordering based on parameter
+        final_queryset = self._apply_ordering(
+            queryset, ordering_param
         )
         logger.info(
-            f"Returning {final_queryset.count()} notes"
+            f"Returning notes with ordering: {ordering_param}"
         )
         return final_queryset
 

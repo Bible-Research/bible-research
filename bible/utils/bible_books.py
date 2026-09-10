@@ -72,6 +72,12 @@ _BOOK_ID_TO_NAME = {
     code: _book_title(name) for name, code, _ in _BIBLE_BOOKS
 }
 
+# Book order mapping for sorting (1-66)
+BOOK_ORDER_MAP = {
+    _book_title(name): idx + 1
+    for idx, (name, _, _) in enumerate(_BIBLE_BOOKS)
+}
+
 
 def get_book_name_from_id(book_id: str) -> str:
     """Return the full English book name for a DBT book ID.

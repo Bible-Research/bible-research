@@ -451,6 +451,51 @@ GET /api/v1/notes/?tag_id=TAG123456789ABCDE
 Authorization: Token <your-token>
 ```
 
+**Query Parameters**:
+- `tag_id` (required): Tag ID to filter notes
+- `ordering` (optional): Sort order
+  - `custom` (default): Custom order ascending
+  - `-custom`: Custom order descending
+  - `created`: Oldest first
+  - `-created`: Newest first
+  - `verse`: Bible order ascending
+  - `-verse`: Bible order descending
+- `page` (optional): Page number (default: 1)
+- `page_size` (optional): Items per page (default: 25, max: 100)
+
+**Paginated Response**:
+```json
+{
+  "count": 150,
+  "next": "http://api/notes/?tag_id=TAG123&page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": "NOT123...",
+      "note_text": "...",
+      "verses": [...],
+      "tag_position": 1,
+      "created_at": "2025-12-28T03:51:55Z"
+    }
+  ]
+}
+```
+
+**Examples**:
+```
+# Get first page with custom ordering (default)
+GET /api/v1/notes/?tag_id=TAG123
+
+# Get second page with 50 items per page
+GET /api/v1/notes/?tag_id=TAG123&page=2&page_size=50
+
+# Sort by newest first
+GET /api/v1/notes/?tag_id=TAG123&ordering=-created
+
+# Sort by Bible verse order
+GET /api/v1/notes/?tag_id=TAG123&ordering=verse
+```
+
 #### Create Note
 ```
 POST /api/v1/notes/
