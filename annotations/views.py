@@ -178,10 +178,19 @@ class NoteViewSet(viewsets.ModelViewSet):
     - GET /api/v1/notes/?ordering={ordering} - Sort notes
     - GET /api/v1/notes/?page={page} - Paginate results
     - GET /api/v1/notes/?page_size={size} - Set page size
+    - GET /api/v1/notes/?fileset_id={fileset_id} - Bible translation
     """
     serializer_class = NoteSerializer
     pagination_class = NotesPagination
     # permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_context(self):
+        """Add fileset_id from query params to serializer context."""
+        context = super().get_serializer_context()
+        fileset_id = self.request.query_params.get('fileset_id')
+        if fileset_id:
+            context['fileset_id'] = fileset_id
+        return context
 
     def perform_create(self, serializer):
         """

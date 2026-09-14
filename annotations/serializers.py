@@ -3,6 +3,8 @@ from django.db.models import Q
 from rest_framework import serializers
 from bible.models import Verse
 from bible.services.dbt.client import get_default_dbt_client
+from bible.services.esv.client import get_default_esv_client
+from bible.services.esv.registry import is_esv_fileset
 from .models import (
     Note,
     NoteVerse,
@@ -209,8 +211,8 @@ class NoteSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """
         Overrides the default representation for GET requests to
-        include nested tag and verse data with content from Bible provider,
-        plus section headings.
+        include nested tag and verse data with content from
+        Bible provider, plus section headings.
         """
         representation = super().to_representation(instance)
         verses = list(instance.verses.all().order_by('verse'))
@@ -219,54 +221,47 @@ class NoteSerializer(serializers.ModelSerializer):
 
         dbt_book_id = verses[0].dbt_book_id
         chapter = verses[0].chapter
+        book_name = verses[0].book
 
         verse_numbers = [v.verse for v in verses]
         first_verse_num = verse_numbers[0]
         last_verse_num = verse_numbers[-1]
 
-        kwargs = {
-            "verse_start": first_verse_num,
-            "verse_end": last_verse_num
-        }
-        dbt_client = get_default_dbt_client()
-        verse_text = dbt_client.get_verses(
-            dbt_book_id, chapter, **kwargs
-        )
+        # Get fileset_id from context, default to DBT
+        fileset_id = self.context.get('fileset_id', 'ENGESV')
+
         verses_with_text = []
-
-        book_name = verses[0].book
-
-        try:
-            for verse in verses:
-                matching_verse = next(
-                    (
-                        v for v in verse_text['data']
-                        if v['verse_start'] == verse.verse
-                    ),
-                    None
-                )
-                text = (
-                    matching_verse['verse_text']
-                    if matching_verse else ''
-                )
-                verse_data = {
-                    'book': book_name,
-                    'chapter': chapter,
-                    'verse': verse.verse,
-                    'text': text
-                }
-                verses_with_text.append(verse_data)
-        except Exception as e:
-            verse_data['text'] = ''
-            print(e)
-
-        representation['verses'] = verses_with_text
-
-        # Include section headings for the verses in this note
         headings = []
+
         try:
-            # Get headings from the API response if available
-            if 'headings' in verse_text:
+            # Use ESV client if fileset is ENGESV_API
+            if is_esv_fileset(fileset_id):
+                esv_client = get_default_esv_client()
+                parsed = esv_client.get_chapter_with_headings(
+                    dbt_book_id, chapter
+                )
+
+                # Extract verses in range
+                for verse in verses:
+                    matching_verse = next(
+                        (
+                            v for v in parsed['verses']
+                            if v['verse_start'] == verse.verse
+                        ),
+                        None
+                    )
+                    text = (
+                        matching_verse['verse_text']
+                        if matching_verse else ''
+                    )
+                    verse_data = {
+                        'book': book_name,
+                        'chapter': chapter,
+                        'verse': verse.verse,
+                        'text': text
+                    }
+                    verses_with_text.append(verse_data)
+
                 # Filter headings to only those relevant to
                 # this note's verses
                 headings = [
@@ -274,12 +269,62 @@ class NoteSerializer(serializers.ModelSerializer):
                         'before_verse': h.get('before_verse'),
                         'text': h.get('text', '')
                     }
-                    for h in verse_text.get('headings', [])
+                    for h in parsed.get('headings', [])
                     if h.get('before_verse') in verse_numbers
                 ]
-        except Exception as e:
-            print(f"Error fetching headings: {e}")
+            else:
+                # Use DBT client for other filesets
+                kwargs = {
+                    "verse_start": first_verse_num,
+                    "verse_end": last_verse_num
+                }
+                dbt_client = get_default_dbt_client()
+                verse_text = dbt_client.get_verses(
+                    dbt_book_id, chapter, **kwargs
+                )
 
+                for verse in verses:
+                    matching_verse = next(
+                        (
+                            v for v in verse_text['data']
+                            if v['verse_start'] == verse.verse
+                        ),
+                        None
+                    )
+                    text = (
+                        matching_verse['verse_text']
+                        if matching_verse else ''
+                    )
+                    verse_data = {
+                        'book': book_name,
+                        'chapter': chapter,
+                        'verse': verse.verse,
+                        'text': text
+                    }
+                    verses_with_text.append(verse_data)
+
+                # Get headings from DBT response if available
+                if 'headings' in verse_text:
+                    headings = [
+                        {
+                            'before_verse': h.get('before_verse'),
+                            'text': h.get('text', '')
+                        }
+                        for h in verse_text.get('headings', [])
+                        if h.get('before_verse') in verse_numbers
+                    ]
+        except Exception as e:
+            print(f"Error fetching verses/headings: {e}")
+            # Fallback: return verses without text
+            for verse in verses:
+                verses_with_text.append({
+                    'book': book_name,
+                    'chapter': chapter,
+                    'verse': verse.verse,
+                    'text': ''
+                })
+
+        representation['verses'] = verses_with_text
         representation['headings'] = headings
 
         # Include full tag object if a tag exists
