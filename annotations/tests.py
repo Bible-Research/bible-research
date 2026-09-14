@@ -791,3 +791,141 @@ class BulkNoteCreateTest(TestCase):
         self.assertEqual(
             Note.objects.filter(tag=self.tag).count(), 0
         )
+
+
+class TestPartialReordering(TestCase):
+    """Tests for partial note reordering with DB-level uniqueness."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username='testuser', password='pass123'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.tag = Tag.objects.create(
+            name='Test', user=self.user
+        )
+        
+        self.notes = [
+            Note.objects.create(
+                note_text=f'Note {i}',
+                tag=self.tag,
+                user=self.user,
+                tag_position=float(i)
+            )
+            for i in range(1, 11)
+        ]
+
+    def test_partial_reorder(self):
+        """Reorder notes 5-7 to positions 50-52"""
+        updates = [
+            {
+                'note_id': self.notes[4].id,
+                'position': 50.0
+            },
+            {
+                'note_id': self.notes[5].id,
+                'position': 51.0
+            },
+            {
+                'note_id': self.notes[6].id,
+                'position': 52.0
+            },
+        ]
+        
+        response = self.client.post(
+            '/api/v1/notes/reorder/',
+            {'tag_id': self.tag.id, 'updates': updates},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, 204)
+        
+        self.notes[4].refresh_from_db()
+        self.assertEqual(self.notes[4].tag_position, 50.0)
+
+    def test_duplicate_position_conflict(self):
+        """DB rejects duplicate positions"""
+        updates = [
+            # Try to set both to position 50
+            {'note_id': self.notes[0].id, 'position': 50.0},
+            {'note_id': self.notes[1].id, 'position': 50.0},
+        ]
+        
+        response = self.client.post(
+            '/api/v1/notes/reorder/',
+            {'tag_id': self.tag.id, 'updates': updates},
+            format='json'
+        )
+        
+        # Should reject in validation before DB
+        self.assertEqual(response.status_code, 400)
+
+    def test_position_already_occupied(self):
+        """DB rejects when position occupied by other note"""
+        # Note at position 1 already exists
+        updates = [
+            {'note_id': self.notes[5].id, 'position': 1.0},
+        ]
+        
+        response = self.client.post(
+            '/api/v1/notes/reorder/',
+            {'tag_id': self.tag.id, 'updates': updates},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, 409)
+        data = response.json()
+        self.assertEqual(data['error'], 'conflict')
+
+    def test_reorder_notes_from_different_tags(self):
+        """Cannot reorder notes from different tags"""
+        other_tag = Tag.objects.create(
+            name='Other', user=self.user
+        )
+        other_note = Note.objects.create(
+            note_text='Other note',
+            tag=other_tag,
+            user=self.user,
+            tag_position=1.0
+        )
+        
+        updates = [
+            {'note_id': other_note.id, 'position': 50.0},
+        ]
+        
+        response = self.client.post(
+            '/api/v1/notes/reorder/',
+            {'tag_id': self.tag.id, 'updates': updates},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('not found', str(response.data))
+
+    def test_reorder_unauthorized_notes(self):
+        """Cannot reorder another user's notes"""
+        User = get_user_model()
+        other_user = User.objects.create_user(
+            username='other', password='pass123'
+        )
+        other_note = Note.objects.create(
+            note_text='Other user note',
+            tag=self.tag,
+            user=other_user,
+            tag_position=99.0
+        )
+        
+        updates = [
+            {'note_id': other_note.id, 'position': 50.0},
+        ]
+        
+        response = self.client.post(
+            '/api/v1/notes/reorder/',
+            {'tag_id': self.tag.id, 'updates': updates},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('not found', str(response.data))

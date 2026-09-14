@@ -148,6 +148,13 @@ class Note(models.Model):
         verbose_name_plural = "Notes"
         # Order by most recent notes first
         ordering = ['-created_at']
+        constraints = [
+            UniqueConstraint(
+                fields=['tag', 'tag_position'],
+                name='unique_tag_position_per_tag',
+                condition=Q(tag__isnull=False),
+            )
+        ]
 
     def __str__(self):
         # Display the first 50 characters of the note text

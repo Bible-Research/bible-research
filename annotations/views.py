@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import models, transaction
+from django.db import models, transaction, IntegrityError
 from django.db.models import Count, Q, F
 from django.shortcuts import get_object_or_404
 
@@ -467,36 +467,113 @@ class NoteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='reorder')
     def reorder(self, request):
         """
-        Accepts {tag_id, note_ids: [...]} and writes integer
-        positions 1, 2, 3... to tag_position on each note.
-        Only the authenticated user's own notes are updated.
+        Reorders notes within a tag.
+        
+        Accepts:
+        {
+          "tag_id": "TAG123",
+          "updates": [
+            {"note_id": "NOT456", "position": 50.0},
+            {"note_id": "NOT789", "position": 51.0}
+          ]
+        }
+        
+        The database enforces unique positions per tag,
+        so duplicate positions will be rejected with 409.
         """
         tag_id = request.data.get('tag_id')
-        note_ids = request.data.get('note_ids', [])
-
-        if not tag_id or not isinstance(note_ids, list):
+        updates = request.data.get('updates', [])
+        
+        if not tag_id:
             return Response(
-                {'detail': 'tag_id and note_ids are required.'},
+                {'detail': 'tag_id is required.'},
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
-
-        user = request.user
-        notes_map = {
-            n.id: n
-            for n in Note.objects.filter(
-                id__in=note_ids, user=user, tag_id=tag_id
+        
+        if not isinstance(updates, list) or not updates:
+            return Response(
+                {'detail': 'updates array is required.'},
+                status=drf_status.HTTP_400_BAD_REQUEST,
             )
-        }
-
-        updates = []
-        for position, note_id in enumerate(note_ids, start=1):
-            note = notes_map.get(note_id)
-            if note:
-                note.tag_position = float(position)
-                updates.append(note)
-
-        Note.objects.bulk_update(updates, ['tag_position'])
-        return Response(status=drf_status.HTTP_204_NO_CONTENT)
+        
+        # Validate update structure
+        note_ids = []
+        position_map = {}
+        
+        for update in updates:
+            note_id = update.get('note_id')
+            position = update.get('position')
+            
+            if not note_id or position is None:
+                return Response(
+                    {
+                        'detail': (
+                            'Each update must have '
+                            'note_id and position.'
+                        )
+                    },
+                    status=drf_status.HTTP_400_BAD_REQUEST,
+                )
+            
+            note_ids.append(note_id)
+            position_map[note_id] = float(position)
+        
+        # Check for duplicate positions in request
+        positions = list(position_map.values())
+        if len(positions) != len(set(positions)):
+            return Response(
+                {
+                    'error': 'validation_error',
+                    'message': 'Duplicate positions in request.',
+                },
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+        
+        user = request.user
+        
+        try:
+            with transaction.atomic():
+                # Fetch and lock notes
+                notes = list(
+                    Note.objects.select_for_update().filter(
+                        id__in=note_ids,
+                        user=user,
+                        tag_id=tag_id
+                    )
+                )
+                
+                if len(notes) != len(note_ids):
+                    found = {n.id for n in notes}
+                    missing = set(note_ids) - found
+                    return Response(
+                        {'detail': f'Notes not found: {missing}'},
+                        status=drf_status.HTTP_400_BAD_REQUEST,
+                    )
+                
+                # Apply position updates
+                for note in notes:
+                    note.tag_position = position_map[note.id]
+                
+                # Bulk update - DB will reject duplicates
+                Note.objects.bulk_update(
+                    notes, ['tag_position']
+                )
+            
+            return Response(status=drf_status.HTTP_204_NO_CONTENT)
+        
+        except IntegrityError as e:
+            # Database rejected due to duplicate position
+            return Response(
+                {
+                    'error': 'conflict',
+                    'message': (
+                        'Position conflict: another note '
+                        'already occupies one of these positions. '
+                        'Please refresh and try again.'
+                    ),
+                },
+                status=drf_status.HTTP_409_CONFLICT,
+            )
 
 
 class CommentViewSet(viewsets.ModelViewSet):
