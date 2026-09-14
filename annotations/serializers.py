@@ -208,8 +208,9 @@ class NoteSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         """
-        Overrides the default representation for GET requests to include
-        nested tag and verse data with content from DBT API.
+        Overrides the default representation for GET requests to
+        include nested tag and verse data with content from DBT API,
+        plus section headings.
         """
         representation = super().to_representation(instance)
         verses = list(instance.verses.all().order_by('verse'))
@@ -228,7 +229,9 @@ class NoteSerializer(serializers.ModelSerializer):
             "verse_end": last_verse_num
         }
         dbt_client = get_default_dbt_client()
-        verse_text = dbt_client.get_verses(dbt_book_id, chapter, **kwargs)
+        verse_text = dbt_client.get_verses(
+            dbt_book_id, chapter, **kwargs
+        )
         verses_with_text = []
 
         book_name = verses[0].book
@@ -236,10 +239,16 @@ class NoteSerializer(serializers.ModelSerializer):
         try:
             for verse in verses:
                 matching_verse = next(
-                    (v for v in verse_text['data'] if v['verse_start'] == verse.verse),
+                    (
+                        v for v in verse_text['data']
+                        if v['verse_start'] == verse.verse
+                    ),
                     None
                 )
-                text = matching_verse['verse_text'] if matching_verse else ''
+                text = (
+                    matching_verse['verse_text']
+                    if matching_verse else ''
+                )
                 verse_data = {
                     'book': book_name,
                     'chapter': chapter,
@@ -252,6 +261,26 @@ class NoteSerializer(serializers.ModelSerializer):
             print(e)
 
         representation['verses'] = verses_with_text
+
+        # Include section headings for the verses in this note
+        headings = []
+        try:
+            # Get headings from the API response if available
+            if 'headings' in verse_text:
+                # Filter headings to only those relevant to
+                # this note's verses
+                headings = [
+                    {
+                        'before_verse': h.get('before_verse'),
+                        'text': h.get('text', '')
+                    }
+                    for h in verse_text.get('headings', [])
+                    if h.get('before_verse') in verse_numbers
+                ]
+        except Exception as e:
+            print(f"Error fetching headings: {e}")
+
+        representation['headings'] = headings
 
         # Include full tag object if a tag exists
         if instance.tag:
