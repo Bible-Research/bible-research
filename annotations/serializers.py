@@ -209,7 +209,7 @@ class NoteSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """
         Overrides the default representation for GET requests to
-        include nested tag and verse data with content from DBT API,
+        include nested tag and verse data with content from Bible provider,
         plus section headings.
         """
         representation = super().to_representation(instance)
