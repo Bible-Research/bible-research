@@ -487,9 +487,13 @@ class NoteViewSet(viewsets.ModelViewSet):
           ]
         }
 
+        Uses a two-phase update to avoid constraint violations
+        when swapping positions:
+        1. Move all notes to temporary negative positions
+        2. Move them to final positions
+
         The database enforces unique positions per tag via
         the 'unique_tag_position_per_tag' constraint.
-        Duplicate positions will be rejected with 409.
         """
         tag_id = request.data.get('tag_id')
         updates = request.data.get('updates', [])
@@ -502,7 +506,7 @@ class NoteViewSet(viewsets.ModelViewSet):
                 },
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
-        
+
         if not isinstance(updates, list) or not updates:
             return Response(
                 {
@@ -511,7 +515,7 @@ class NoteViewSet(viewsets.ModelViewSet):
                 },
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
-        
+
         # Enforce maximum of 100 notes per reorder request
         if len(updates) > 100:
             return Response(
@@ -600,14 +604,19 @@ class NoteViewSet(viewsets.ModelViewSet):
                         status=drf_status.HTTP_400_BAD_REQUEST,
                     )
                 
-                # Apply position updates
+                # Two-phase update to avoid constraint violations
+                # during swaps:
+                # Phase 1: Move to temporary negative positions
+                for idx, note in enumerate(notes):
+                    note.tag_position = -(idx + 1)
+                
+                Note.objects.bulk_update(notes, ['tag_position'])
+                
+                # Phase 2: Move to final positions
                 for note in notes:
                     note.tag_position = position_map[note.id]
                 
-                # Bulk update - DB will reject duplicates
-                Note.objects.bulk_update(
-                    notes, ['tag_position']
-                )
+                Note.objects.bulk_update(notes, ['tag_position'])
             
             return Response(status=drf_status.HTTP_204_NO_CONTENT)
         
