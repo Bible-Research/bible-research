@@ -9,10 +9,10 @@ variable "region" {
   description = "Default provider region. App Engine and Artifact Registry use europe-west3; audio resources follow Artifact Registry (see main.tf app_engine_region)."
 }
 
-# GitHub repository allowed to authenticate via WIF (e.g. Bible-Research/bible-research).
+# GitHub repository allowed to authenticate via WIF.
 variable "github_repo" {
   type    = string
-  default = "Bible-Research/bible-research"
+  default = "Bible-Research/bible_research"
 }
 
 # Allowed origins for GCS bucket CORS policy.

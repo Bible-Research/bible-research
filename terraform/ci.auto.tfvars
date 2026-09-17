@@ -3,4 +3,4 @@
 
 project_id  = "bible-research-489314"
 region      = "europe-west3"
-github_repo = "Bible-Research/bible-research"
+github_repo = "Bible-Research/bible_research"
