@@ -1,0 +1,1 @@
+Create github action that would delete old GCP AF images during deployments to not exceed the AF storage limits due to the 24 h retention period before GCP automatically deletes old images.
