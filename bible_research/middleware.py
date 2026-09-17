@@ -133,7 +133,11 @@ class DeviceAndCountryMiddleware:
                     print(f"Created new user: {username}")
 
             request.user = user
-            login(request, user)
+            login(
+                request,
+                user,
+                backend='django.contrib.auth.backends.ModelBackend'
+            )
             print(f"Auto-authenticated as: {user.username}")
             return
         except Exception as e:
@@ -153,5 +157,9 @@ class DeviceAndCountryMiddleware:
                     print(f"Created new user: {username}")
 
             request.user = user
-            login(request, user)
+            login(
+                request,
+                user,
+                backend='django.contrib.auth.backends.ModelBackend'
+            )
             print(f"Auto-authenticated as: {user.username}")
