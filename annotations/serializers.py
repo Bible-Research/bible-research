@@ -1,4 +1,3 @@
-import logging
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from rest_framework import serializers
@@ -15,7 +14,6 @@ from .models import (
     ReadingPosition
 )
 User = get_user_model()
-logger = logging.getLogger(__name__)
 
 
 class CurrentAuthenticatedUserDefault:
@@ -232,22 +230,12 @@ class NoteSerializer(serializers.ModelSerializer):
         # Get fileset_id from context, default to DBT
         fileset_id = self.context.get('fileset_id', 'ENGESV')
 
-        logger.info(
-            f"NoteSerializer.to_representation: note_id={instance.id}, "
-            f"book={book_name}, chapter={chapter}, "
-            f"fileset_id={fileset_id}, "
-            f"is_esv={is_esv_fileset(fileset_id)}"
-        )
-
         verses_with_text = []
         headings = []
 
         try:
             # Use ESV client if fileset is ENGESV_API
             if is_esv_fileset(fileset_id):
-                logger.info(
-                    f"Using ESV client for note {instance.id}"
-                )
                 esv_client = get_default_esv_client()
                 parsed = esv_client.get_chapter_with_headings(
                     dbt_book_id, chapter
@@ -286,9 +274,6 @@ class NoteSerializer(serializers.ModelSerializer):
                 ]
             else:
                 # Use DBT client for other filesets
-                logger.info(
-                    f"Using DBT client for note {instance.id}"
-                )
                 kwargs = {
                     "verse_start": first_verse_num,
                     "verse_end": last_verse_num
@@ -329,11 +314,7 @@ class NoteSerializer(serializers.ModelSerializer):
                         if h.get('before_verse') in verse_numbers
                     ]
         except Exception as e:
-            logger.exception(
-                f"Error fetching verses/headings for note "
-                f"{instance.id} ({book_name} {chapter}, "
-                f"fileset: {fileset_id}): {e}"
-            )
+            print(f"Error fetching verses/headings: {e}")
             # Fallback: return verses without text
             for verse in verses:
                 verses_with_text.append({
