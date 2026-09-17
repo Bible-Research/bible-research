@@ -476,8 +476,8 @@ class NoteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='reorder')
     def reorder(self, request):
         """
-        Reorders notes within a tag.
-        
+        Reorders notes within a tag (up to 100 notes per request).
+
         Accepts:
         {
           "tag_id": "TAG123",
@@ -486,22 +486,42 @@ class NoteViewSet(viewsets.ModelViewSet):
             {"note_id": "NOT789", "position": 51.0}
           ]
         }
-        
-        The database enforces unique positions per tag,
-        so duplicate positions will be rejected with 409.
+
+        The database enforces unique positions per tag via
+        the 'unique_tag_position_per_tag' constraint.
+        Duplicate positions will be rejected with 409.
         """
         tag_id = request.data.get('tag_id')
         updates = request.data.get('updates', [])
-        
+
         if not tag_id:
             return Response(
-                {'detail': 'tag_id is required.'},
+                {
+                    'error': 'validation_error',
+                    'message': 'tag_id is required.',
+                },
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
         
         if not isinstance(updates, list) or not updates:
             return Response(
-                {'detail': 'updates array is required.'},
+                {
+                    'error': 'validation_error',
+                    'message': 'updates array is required.',
+                },
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Enforce maximum of 100 notes per reorder request
+        if len(updates) > 100:
+            return Response(
+                {
+                    'error': 'validation_error',
+                    'message': (
+                        f'Cannot reorder more than 100 notes '
+                        f'at once. Received {len(updates)} notes.'
+                    ),
+                },
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
         
@@ -509,17 +529,31 @@ class NoteViewSet(viewsets.ModelViewSet):
         note_ids = []
         position_map = {}
         
-        for update in updates:
+        for idx, update in enumerate(updates):
             note_id = update.get('note_id')
             position = update.get('position')
             
             if not note_id or position is None:
                 return Response(
                     {
-                        'detail': (
-                            'Each update must have '
-                            'note_id and position.'
-                        )
+                        'error': 'validation_error',
+                        'message': (
+                            f'Update at index {idx} is missing '
+                            f'note_id or position.'
+                        ),
+                    },
+                    status=drf_status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Check for duplicate note_ids in request
+            if note_id in position_map:
+                return Response(
+                    {
+                        'error': 'validation_error',
+                        'message': (
+                            f'Duplicate note_id in request: '
+                            f'{note_id}'
+                        ),
                     },
                     status=drf_status.HTTP_400_BAD_REQUEST,
                 )
@@ -555,7 +589,14 @@ class NoteViewSet(viewsets.ModelViewSet):
                     found = {n.id for n in notes}
                     missing = set(note_ids) - found
                     return Response(
-                        {'detail': f'Notes not found: {missing}'},
+                        {
+                            'error': 'validation_error',
+                            'message': (
+                                f'Notes not found or do not '
+                                f'belong to tag {tag_id}: '
+                                f'{missing}'
+                            ),
+                        },
                         status=drf_status.HTTP_400_BAD_REQUEST,
                     )
                 
@@ -571,18 +612,39 @@ class NoteViewSet(viewsets.ModelViewSet):
             return Response(status=drf_status.HTTP_204_NO_CONTENT)
         
         except IntegrityError as e:
-            # Database rejected due to duplicate position
-            return Response(
-                {
-                    'error': 'conflict',
-                    'message': (
-                        'Position conflict: another note '
-                        'already occupies one of these positions. '
-                        'Please refresh and try again.'
-                    ),
-                },
-                status=drf_status.HTTP_409_CONFLICT,
-            )
+            # Database rejected due to unique constraint
+            # violation (unique_tag_position_per_tag)
+            error_msg = str(e).lower()
+            
+            if 'unique_tag_position_per_tag' in error_msg:
+                return Response(
+                    {
+                        'error': 'position_conflict',
+                        'message': (
+                            'Position conflict: one or more '
+                            'positions are already occupied by '
+                            'other notes in this tag. Please '
+                            'refresh and try again.'
+                        ),
+                        'constraint': 'unique_tag_position_per_tag',
+                    },
+                    status=drf_status.HTTP_409_CONFLICT,
+                )
+            else:
+                # Generic integrity error
+                logger.error(
+                    f'Unexpected IntegrityError in reorder: {e}'
+                )
+                return Response(
+                    {
+                        'error': 'database_error',
+                        'message': (
+                            'A database constraint was violated. '
+                            'Please try again.'
+                        ),
+                    },
+                    status=drf_status.HTTP_409_CONFLICT,
+                )
 
 
 class CommentViewSet(viewsets.ModelViewSet):
