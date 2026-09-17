@@ -270,6 +270,12 @@ if DBT_KEY:
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    'users.backends.CaseInsensitiveAuthBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': (
